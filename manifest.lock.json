@@ -1,0 +1,24 @@
+{
+  "_doc": "Lock file for hash-locked artifacts in katala-os. Compare a runtime hash against the value here; mismatch = drift, surface to NEEDS_REVIEW.md before acting. Update only when the change is intentional and signed.",
+  "version": 1,
+  "generated_at": "2026-08-04",
+  "generated_by": "repo-init template",
+  "paths_relative_to": "./",
+  "artifacts": {
+    "CONSTITUTION.md": {
+      "path": "CONSTITUTION.md",
+      "sha256": "F4FA6B9834A32DA0E62EE20787767D46A2573D95FD4F97DE27131D91503872C9",
+      "role": "constitutional baseline; the deliberately-narrow subset that never drifts"
+    },
+    "AGENTS-COMMUNICATION.md": {
+      "path": "AGENTS-COMMUNICATION.md",
+      "sha256": "1E203CCEEC88A70381713FA58F3C9D478F1F565F7A49792DAC55602ED43814B1",
+      "role": "operator/agent communication contract"
+    }
+  },
+  "drift_response": "If a runtime hash does not match the value here: (1) determine if the change was intentional, (2) if yes, update this lock file in a signed commit alongside the file change, (3) if no, restore the file from git history.",
+  "drift_checkers": {
+    "macos_linux": "scripts/verify.sh",
+    "windows": "pwsh -File scripts/Test-FleetMirrorFreshness.ps1"
+  }
+}
