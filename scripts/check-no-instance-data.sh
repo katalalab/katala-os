@@ -19,9 +19,9 @@ SELF='scripts/check-no-instance-data.sh'
 # Matches tracked files only (git grep), skips binaries (-I), and drops lines
 # matching <allowed-ere> so documented placeholders do not trip the gate.
 scan() {
-  local label="$1" pattern="$2" allowed="${3:-}"
+  local label="$1" pattern="$2" allowed="${3:-}" flags="${4:-}"
   local hits
-  hits="$(git grep -nIE "$pattern" -- . ":!$SELF" 2>/dev/null || true)"
+  hits="$(git grep -nIE $flags "$pattern" -- . ":!$SELF" 2>/dev/null || true)"
   if [ -n "$allowed" ] && [ -n "$hits" ]; then
     hits="$(printf '%s\n' "$hits" | grep -vE "$allowed" || true)"
   fi
@@ -62,8 +62,9 @@ scan 'webhook endpoint' \
 # reusable rule into a trace of one real session. Provenance dating (ratified,
 # retrieved, generated, published) is legitimate and stays allowed.
 scan 'dated observation' \
-  '(observ|measur|identif|benchmark|audit)[a-z]*.{0,80}[0-9]{4}-[0-9]{2}-[0-9]{2}|[0-9]{4}-[0-9]{2}-[0-9]{2}.{0,80}(observ|measur|identif|benchmark|audit)[a-z]*' \
-  '(ratified|retrieved|generated|published|Retrieved)'
+  '(observ|measur|identif|benchmark|audit|detect|notic|reproduc|encounter)[a-z]*.{0,80}[0-9]{4}-[0-9]{2}-[0-9]{2}|[0-9]{4}-[0-9]{2}-[0-9]{2}.{0,80}(observ|measur|identif|benchmark|audit|detect|notic|reproduc|encounter)[a-z]*' \
+  '(ratified|retrieved|generated|published)' \
+  '-i'
 
 # Host inventories must stay out of the published tree; ship a .example instead.
 inventory="$(git ls-files | grep -E '(^|/)(fleet-hosts\.tsv|fleet-env-manifest\.json)$' || true)"
