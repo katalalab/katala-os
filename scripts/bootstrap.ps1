@@ -65,6 +65,19 @@ function Link-One {
     New-Item -ItemType SymbolicLink -Path $Target -Target $Canonical | Out-Null
 }
 
+# Symlink creation on Windows needs either Developer Mode or an elevated shell.
+# Without it New-Item fails per-target and the failure only surfaces later as a
+# confusing verification error, so probe once here and say what to turn on.
+$probe = Join-Path ([System.IO.Path]::GetTempPath()) ("agent-context-symlink-probe-" + [guid]::NewGuid())
+try {
+    New-Item -ItemType SymbolicLink -Path $probe -Target $Canonical -ErrorAction Stop | Out-Null
+    Remove-Item -LiteralPath $probe -Force
+}
+catch {
+    Write-Error "cannot create symlinks: enable Developer Mode (Settings > System > For developers) or run this in an elevated shell. Underlying error: $($_.Exception.Message)"
+    exit 1
+}
+
 Write-Host "agent-context bootstrap (canonical: $Canonical)"
 
 $targets = @(

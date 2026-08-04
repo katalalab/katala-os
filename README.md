@@ -70,6 +70,14 @@ whole point: an agent cannot quietly rewrite the rules it is governed by.
 
 This is one operator's working system, published because the patterns generalize — not a framework with a stable API. Expect to fork and edit rather than configure. The `codex-ops/` policy documents in particular encode choices (high-autonomy inside trusted project roots, specific log-retention caps) that you should re-decide for your own environment rather than inherit.
 
+Two things to know before you run anything: the scripts here **write to your home directory** (see [SECURITY.md](SECURITY.md)), and the `PreToolUse` safety valves are **advisory, not containment** — they warn and back up state, they do not sandbox an agent.
+
+Several scripts and hooks still carry their original Japanese rationale comments. They are accurate; the repository is otherwise English. Translations are welcome (see [CONTRIBUTING.md](CONTRIBUTING.md)).
+
+## Stability
+
+**No API stability guarantee, and no versioning.** Rule wording, script flags, and file layout change when the underlying setup changes, without a deprecation period. Pin a commit if you depend on any of it. Breaking changes are normal here and are not treated as regressions.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
