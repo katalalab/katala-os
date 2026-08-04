@@ -19,6 +19,7 @@ The approach here separates the two:
 | Component | What it does |
 | --- | --- |
 | `CONSTITUTION.md` | The hash-locked, non-negotiable subset. Three unwritten rules + operating defaults. |
+| `AGENTS.MD` | The baseline that gets mirrored to every agent's filename. Ships as a **fictional example** — rewrite it for your own environment. |
 | `AGENTS-COMMUNICATION.md` | The operator↔agent communication contract: goal contracts, how to read terse instructions, when to ask vs. proceed. |
 | `templates/` | Fill-in-the-blank versions of every governing file (`{{PLACEHOLDER}}` variables), so a new repo or a new machine starts compliant. |
 | `hooks/` | `PreToolUse` safety valves for shell commands, plus a `pre-commit` gate that blocks staged secrets (`.env`, `*.pem`, high-confidence key patterns) and validates JSON config syntax. |
@@ -29,20 +30,32 @@ The approach here separates the two:
 
 ## Quick start
 
+Requires `bash`, `git`, and `jq`. The clone path matters: the verifiers default to
+`~/work/agent-context`.
+
 ```bash
 git clone https://github.com/katalalab/katala-os ~/work/agent-context
 cd ~/work/agent-context
-cp templates/AGENTS.md.tmpl AGENTS.md   # then fill the {{PLACEHOLDER}} values
-./scripts/bootstrap.sh                  # symlinks ~/CLAUDE.md, ~/AGENTS.md, ~/GEMINI.md
-./scripts/verify-manifest.sh            # confirms the constitution matches its recorded hash
+$EDITOR AGENTS.MD          # ships as a fictional example — rewrite it for your machines first
+./scripts/bootstrap.sh     # symlinks ~/CLAUDE.md, ~/AGENTS.md, ~/GEMINI.md to AGENTS.MD
+./scripts/verify.sh        # hash-lock check + skill validation
 ```
 
-Windows (Developer Mode required, because the mirror uses symlinks rather than copies):
+`bootstrap.sh` backs up any existing file at those three paths before replacing it (under
+`~/.local/state/agent-context-backups/`, five generations) — but read it before running it, since
+it does write to your home directory.
+
+Windows needs Developer Mode enabled, because the mirror uses symlinks rather than copies:
 
 ```powershell
 pwsh -File .\scripts\bootstrap.ps1
 pwsh -File .\scripts\Test-FleetMirrorFreshness.ps1
 ```
+
+`AGENTS.MD` is deliberately **not** hash-locked — it is meant to evolve as your setup does. Only
+`CONSTITUTION.md` and `AGENTS-COMMUNICATION.md` are recorded in `manifest.lock.json`; editing
+either one fails `verify.sh` until you update the recorded hash in the same commit, which is the
+whole point: an agent cannot quietly rewrite the rules it is governed by.
 
 ## Ideas worth stealing even if you don't adopt the whole thing
 

@@ -1,12 +1,15 @@
-# Example baseline (fictional fleet)
+# Baseline — REPLACE THIS WITH YOUR OWN
 
-This is an illustrative filled-in baseline, written from `templates/AGENTS.md.tmpl` for a fictional
-three-machine fleet. It exists so you can see the intended shape before filling in your own.
-Nothing here describes a real environment.
+> **This file is a fictional example, and it is also the file `scripts/bootstrap.sh` mirrors.**
+> Rewrite it for your own environment before you rely on it: the fleet table, the routing, and
+> the workspace layout below describe a three-machine fleet that does not exist. Nothing here
+> describes a real environment. `templates/AGENTS.md.tmpl` is the blank form if you would rather
+> start from nothing.
 
-The canonical copy of your own version lives at one path and is mirrored by symlink to
-`~/CLAUDE.md`, `~/AGENTS.md`, and `~/GEMINI.md`. Keep it to hard rules; procedures belong in
-runbooks, skills, or OS overlays.
+This file is the canonical baseline: `bootstrap.sh` / `bootstrap.ps1` symlink `~/CLAUDE.md`,
+`~/AGENTS.md`, and `~/GEMINI.md` to it, so every agent reads one source and divergence is
+structurally impossible. Keep it to hard rules; procedures belong in runbooks, skills, or OS
+overlays. `CONSTITUTION.md` outranks everything written here.
 
 ## Fleet
 
