@@ -3,9 +3,9 @@
 // and apply-bash-safety-valve.js).
 //
 // The valves are advisory and non-blocking, so anything that rewrites
-// ~/.claude/settings.json can drop them with no visible symptom — Orca did
-// exactly that on gpu-node-a between 2026-07-18 and 2026-07-25 and nothing
-// noticed for eight days. This checks first and only re-runs the idempotent
+// ~/.claude/settings.json can drop them with no visible symptom — a plugin
+// installer rewrote that file once and nothing noticed for over a week. This
+// checks first and only re-runs the idempotent
 // installers when a valve is actually missing, so a healthy node is never
 // rewritten (each installer run would otherwise churn a backup).
 //

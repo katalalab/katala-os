@@ -5,7 +5,7 @@ description: Turn an open-ended or /goal objective into a bounded contract — i
 
 # goal-contract — bounded execution for open-ended goals
 
-Prevents the known failure mode on this fleet: `/goal` sessions that run for dozens of turns until the operator has to say 「完了条件を決めて終了してください」(observed 2026-07-01, 30 turns / 11 auto-compactions).
+Prevents a common failure mode: open-ended goal sessions that run for dozens of turns, burning context on auto-compactions, until the operator has to interrupt and ask for completion criteria.
 
 ## When to use
 

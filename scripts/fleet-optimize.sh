@@ -21,7 +21,7 @@ if [[ -f "$CODEX_HOME/logs_2.sqlite" ]]; then
     SIZE=$(wc -c < "$CODEX_HOME/logs_2.sqlite" | tr -d ' ' | tr -d '\r')
     # 閾値と手段は批准済み AGENTS.MD の Maintenance 節に合わせる。ここが乖離していた:
     #   - 旧: 100 MiB 超で `mv logs_2.sqlite*` していた。これは (a) 100 MiB は到達不能な
-    #     旧値(an active node measured 162.7 MiB, which is within normal range)、(b) 稼働中の SQLite を
+    #     旧値(通常運用のログが既に超える水準)、(b) 稼働中の SQLite を
     #     -wal/-shm ごと移動するため Codex が書き込み中だと破損しうる、
     #     (c) baseline が要求する copy-first と write-lock yield を満たさない。
     #   - 新: soft cap 250 MiB。超過時は行単位 retention を使う。

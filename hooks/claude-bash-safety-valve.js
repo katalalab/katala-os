@@ -36,8 +36,9 @@ const DESTRUCTIVE = [
 ];
 
 // --- State-marker guard ---
-// WHY: fleet-scars 2026-07-12 — gpu-node-aで実マーカー NEEDS_RELOGIN を touch/rm 検証中に
-// 内容ごと喪失(復元不能)。運用シグナル(NEEDS_*, ENABLEフラグ, *.marker, latest.json類)に
+// WHY: validating a state marker with touch/rm destroyed its contents once,
+// unrecoverably. When rm/touch/mv touches an operational signal (NEEDS_*, ENABLE
+// flags, *.marker, latest.json and friends),
 // rm/touch/mv が触れるときは、実行前に (1)既存確認 (2)内容を退避ファイルへ保存 のうえ
 // 退避パス+内容抜粋を警告表示する。非ブロッキング(警告のみ)は本弁の設計思想どおり維持。
 // 退避先 ~/.claude/marker-backups/ は最新40件保持・超過分を同処理内でprune(Hard Rules準拠)。
@@ -118,7 +119,7 @@ function markerWarnings(cmd, cwd) {
     try {
       const { dest, content } = backupMarker(abs);
       const excerpt = content.slice(0, EXCERPT_CAP) || '(空ファイル)';
-      lines.push(`🛡️ stateマーカー保護: ${t.verb} が既存マーカー ${abs} に触れます(fleet-scars 2026-07-12)。\n   内容を退避済み: ${dest}\n   --- 内容(先頭${EXCERPT_CAP}字) ---\n   ${excerpt}`);
+      lines.push(`🛡️ stateマーカー保護: ${t.verb} が既存マーカー ${abs} に触れます。\n   内容を退避済み: ${dest}\n   --- 内容(先頭${EXCERPT_CAP}字) ---\n   ${excerpt}`);
     } catch (e) {
       lines.push(`🛡️ stateマーカー保護: ${t.verb} が既存マーカー ${abs} に触れますが退避に失敗(${e.message})。手動で内容確認+退避してから実行してください。`);
     }

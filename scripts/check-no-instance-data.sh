@@ -56,6 +56,15 @@ scan 'account identifier' \
 scan 'webhook endpoint' \
   'hooks\.slack\.com/services/[A-Za-z0-9/]+|discord(app)?\.com/api/webhooks/[0-9]+'
 
+# "I saw X on my machine on DATE" narratives. A regex cannot see semantic leaks in
+# general, but this one class is mechanical and it is the class that survived the
+# first sanitization pass: an observation verb next to a calendar date turns a
+# reusable rule into a trace of one real session. Provenance dating (ratified,
+# retrieved, generated, published) is legitimate and stays allowed.
+scan 'dated observation' \
+  '(observ|measur|identif|benchmark|audit)[a-z]*.{0,80}[0-9]{4}-[0-9]{2}-[0-9]{2}|[0-9]{4}-[0-9]{2}-[0-9]{2}.{0,80}(observ|measur|identif|benchmark|audit)[a-z]*' \
+  '(ratified|retrieved|generated|published|Retrieved)'
+
 # Host inventories must stay out of the published tree; ship a .example instead.
 inventory="$(git ls-files | grep -E '(^|/)(fleet-hosts\.tsv|fleet-env-manifest\.json)$' || true)"
 if [ -n "$inventory" ]; then

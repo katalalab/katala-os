@@ -17,7 +17,7 @@ PYTHONDONTWRITEBYTECODE=1 $HOME/.pyenv/versions/3.12.11/bin/python3 \
 
 Exit `0` means `ok`; `2` means `degraded` from `SIZE_WARNING` or `INODE_CHANGED`; `1` means fail-closed for invalid arguments, missing/unreadable/nonregular/symlink files, or `SIZE_CRITICAL`. The warn threshold is inclusive; the larger critical threshold is inclusive. An optional positive `--expected-inode` detects rotation/replacement and combines with other issues in sorted unique order.
 
-Do not schedule this gate or perform rotation, `SIGHUP`, restart, truncate, `newsyslog`, or launchd changes in this slice. Local observation on 2026-08-03 identified a 160745823-byte `tailscaled` log-size concern; this gate intentionally records metadata only and never reads raw content.
+Do not schedule this gate or perform rotation, `SIGHUP`, restart, truncate, `newsyslog`, or launchd changes in this slice. An unrotated `tailscaled` log can grow to hundreds of megabytes, which is what this gate exists to notice; it records metadata only and never reads raw content.
 
 ## Evidence and limitations
 
