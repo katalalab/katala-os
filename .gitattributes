@@ -1,0 +1,16 @@
+# Canonical text files: enforce LF on checkout to keep hashes stable across OS.
+# Without this, Windows core.autocrlf=true converts to CRLF and Test-FleetMirrorFreshness.ps1
+# reports false drift.
+
+* text=auto eol=lf
+
+AGENTS.MD          text eol=lf
+CONSTITUTION.md    text eol=lf
+README.md          text eol=lf
+manifest.lock.json text eol=lf
+*.md               text eol=lf
+*.sh               text eol=lf
+*.json             text eol=lf
+
+# PowerShell scripts: keep CRLF on Windows (matches native pwsh expectations).
+*.ps1              text eol=crlf

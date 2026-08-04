@@ -1,0 +1,70 @@
+# {{REPO_NAME}} — Agent Context
+
+Repo-specific delta. Global baseline: `~/work/agent-context/AGENTS.MD` (mirrored to `~/CLAUDE.md`, `~/AGENTS.md`, `~/GEMINI.md`).
+This file overrides the global baseline only where stated; everything else inherits.
+
+## What this repo is
+
+{{REPO_DESCRIPTION}}
+
+<!-- Replace with: scope, runtime/language, deploy target (or "local-only"), upstream owners. Keep under 5 lines. -->
+
+## Layout
+
+<!-- Top-level dirs and what each is for. Bullet form. Example:
+- `src/`: implementation
+- `tests/`: pytest suite
+- `docs/official-docs/`: pinned evidence per Official Docs Gate
+- `scripts/`: dev-only helpers
+-->
+
+## Build / test / lint
+
+<!-- The narrowest real command per concern. Example:
+- install: `uv sync`
+- test:    `uv run pytest`
+- lint:    `uv run ruff check .`
+- format:  `uv run ruff format .`
+- typecheck: `uv run mypy src`
+-->
+
+## Repo-specific hard rules
+
+- Inherits all Hard Rules from `~/work/agent-context/AGENTS.MD`.
+- Inherits all Constitutional rules from `~/work/agent-context/CONSTITUTION.md`. If a rule below contradicts the constitution, the constitution wins.
+
+<!-- Add repo-specific deltas only. Examples that are usually worth stating:
+- Public surface lives at `<path>`; do not break its contract without a migration plan.
+- Secrets resolve from 1Password vault `<name>` only; never read from `.env` committed files.
+- Long-running jobs go through `<runner>`; do not spawn background processes in tests.
+-->
+
+## Verification
+
+<!-- The single command that confirms a change works. Used by agents to self-check before reporting done.
+Example:
+- `uv run pytest tests/test_<area>.py -k <name>` for the touched area
+- `./scripts/verify-manifest.sh` if this repo also hash-locks artifacts
+-->
+
+## Drift guard
+
+This repo opts into the shared pre-commit hook:
+
+```bash
+git config core.hooksPath {{AGENT_CONTEXT_PATH}}/hooks
+```
+
+The hook blocks staged `.env`, `*.key`, `*.pem`, `credentials.json`, `token.json`, `*.bak-<ts>*`, and high-confidence secret patterns (`sk-(ant|proj|live)-…`, `AIza…`, `ghp_…`, `gho_…`, `xox[abp]-…`, `AKIA…`, PEM blocks). It also validates JSON syntax for `*.mcp.json`, `*/settings.json`, `package.json`, and Claude plugin manifests.
+
+## Read Order (for agents)
+
+1. This file.
+2. `~/work/agent-context/AGENTS.MD` (global baseline).
+3. `~/work/agent-context/CONSTITUTION.md` (constitutional subset).
+4. Relevant subdir `AGENTS.md` if present.
+5. Official docs per the Official Docs Gate.
+
+## NEEDS_REVIEW
+
+When a multi-agent consensus check dissents, append the case to `NEEDS_REVIEW.md` at repo root. Constitutional dissent halts the change until the operator ratifies.

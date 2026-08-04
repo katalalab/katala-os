@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# Pre-commit drift guard for Katala OS repos. Opt-in per-repo via:
+#   git config core.hooksPath ~/work/agent-context/hooks    # macOS / Linux
+#   git config core.hooksPath "$env:USERPROFILE\work\agent-context\hooks"  # Windows (Git for Windows ships sh)
+#
+# Enforces: AGENTS.MD "Hard Rules" (no secrets in commits, no .env / *.key / *.pem
+# / credentials.json / token.json / *.bak-* slipping through) plus JSON syntax
+# validation for common config files.
+
+set -euo pipefail
+
+STAGED=$(git diff --cached --name-only --diff-filter=ACMR || true)
+[ -z "$STAGED" ] && exit 0
+
+FAIL=0
+
+# 1. Block files that should never be committed.
+BLOCK_FILES_RE='(^|/)(\.env(\..*)?$|.*\.key$|.*\.pem$|.*credentials\.json$|.*token\.json$|.*\.bak-[0-9]{8}-[0-9]{6}.*)'
+BAD_FILES=$(echo "$STAGED" | grep -E "$BLOCK_FILES_RE" | grep -vE '\.env\.(example|template|sample)$' || true)
+if [ -n "$BAD_FILES" ]; then
+  echo "pre-commit: blocked sensitive / backup files:" >&2
+  echo "$BAD_FILES" >&2
+  echo "  -> If intentional, commit with --no-verify (records bypass in reflog)." >&2
+  FAIL=1
+fi
+
+# 2. Block high-confidence secret patterns in staged content.
+SECRET_RE='(sk-(ant|proj|live)-[A-Za-z0-9_-]{20,}|AIza[A-Za-z0-9_-]{30,}|ghp_[A-Za-z0-9]{30,}|gho_[A-Za-z0-9]{30,}|xox[abp]-[A-Za-z0-9-]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----)'
+SECRET_HITS=$(git diff --cached --no-color -U0 | grep -E "$SECRET_RE" || true)
+if [ -n "$SECRET_HITS" ]; then
+  echo "pre-commit: blocked likely secret in staged content (regex match):" >&2
+  echo "$SECRET_HITS" | head -3 >&2
+  echo "  -> Move the secret to 1Password (op://...) and reference it at runtime." >&2
+  FAIL=1
+fi
+
+# 3. JSON syntax validation for staged .mcp.json / settings.json / package.json.
+for f in $STAGED; do
+  case "$f" in
+    *.mcp.json|*/settings.json|package.json|*.claude-plugin/marketplace.json|*.claude-plugin/plugin.json)
+      [ -f "$f" ] || continue
+      if command -v jq >/dev/null 2>&1; then
+        if ! jq empty "$f" >/dev/null 2>&1; then
+          echo "pre-commit: invalid JSON: $f" >&2
+          FAIL=1
+        fi
+      elif command -v python3 >/dev/null 2>&1; then
+        if ! python3 -c "import json,sys; json.load(open(sys.argv[1], encoding='utf-8'))" "$f" >/dev/null 2>&1; then
+          echo "pre-commit: invalid JSON: $f" >&2
+          FAIL=1
+        fi
+      fi
+      ;;
+  esac
+done
+
+exit $FAIL

@@ -1,0 +1,24 @@
+{
+  "_doc": "Lock file for hash-locked artifacts in {{REPO_NAME}}. Compare a runtime hash against the value here; mismatch = drift, surface to NEEDS_REVIEW.md before acting. Update only when the change is intentional and signed.",
+  "version": 1,
+  "generated_at": "{{DATE}}",
+  "generated_by": "{{OPERATOR}} (repo-init template)",
+  "paths_relative_to": "./",
+  "artifacts": {
+    "AGENTS.md": {
+      "path": "AGENTS.md",
+      "sha256": "REPLACE_AFTER_INIT",
+      "role": "repo agent context; symlink-friendly to repo-local CLAUDE.md / GEMINI.md if desired"
+    },
+    "CONSTITUTION.md": {
+      "path": "CONSTITUTION.md",
+      "sha256": "REPLACE_AFTER_INIT",
+      "role": "repo constitutional baseline; the deliberately-narrow subset that never drifts"
+    }
+  },
+  "drift_response": "If a runtime hash does not match the value here: (1) determine if the change was intentional, (2) if yes, update this lock file in a signed commit alongside the file change, (3) if no, restore the file from git history.",
+  "drift_checkers": {
+    "macos_linux": "scripts/verify.sh",
+    "shared": "{{AGENT_CONTEXT_PATH}}/scripts/verify-manifest.sh ./manifest.lock.json"
+  }
+}

@@ -1,0 +1,53 @@
+# Cross-OS line-ending policy for Katala OS repos.
+#
+# Why: without this, Windows core.autocrlf=true rewrites Markdown/JSON/sh to CRLF
+# on checkout, which breaks SHA256-locked artifacts (manifest.lock.json) and
+# noisily diffs scripts shared across Mac and Windows nodes.
+
+* text=auto eol=lf
+
+# Canonical text files: LF on checkout regardless of platform.
+*.md              text eol=lf
+*.json            text eol=lf
+*.yaml            text eol=lf
+*.yml             text eol=lf
+*.toml            text eol=lf
+*.sh              text eol=lf
+*.py              text eol=lf
+*.ts              text eol=lf
+*.tsx             text eol=lf
+*.js              text eol=lf
+*.jsx             text eol=lf
+
+# PowerShell scripts: keep CRLF (native pwsh expectation on Windows).
+*.ps1             text eol=crlf
+*.psm1            text eol=crlf
+*.psd1            text eol=crlf
+*.cmd             text eol=crlf
+*.bat             text eol=crlf
+
+# Binary: never normalize.
+*.png             binary
+*.jpg             binary
+*.jpeg            binary
+*.gif             binary
+*.pdf             binary
+*.zip             binary
+*.gz              binary
+*.tar             binary
+*.tgz             binary
+*.zst             binary
+*.ico             binary
+*.woff            binary
+*.woff2           binary
+*.ttf             binary
+*.otf             binary
+*.eot             binary
+*.mp3             binary
+*.mp4             binary
+*.mov             binary
+*.wav             binary
+*.flac            binary
+*.docx            binary
+*.xlsx            binary
+*.pptx            binary

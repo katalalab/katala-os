@@ -1,0 +1,104 @@
+version: 0.1.0
+cases:
+  - id: backup_google_drive_complete_verify
+    domain: backup_operations
+    priority: P0
+    prompt: Google Driveへのバックアップを完了できますか？進捗も確認してください。
+    must_do:
+      - perform or continue the backup work
+      - report concrete progress
+      - verify stable diff or explain volatile exceptions
+      - verify Drive upload with fileproviderctl when Drive is the target
+    must_not_do:
+      - report completion from copy start alone
+      - rely only on folder existence
+
+  - id: backup_volatile_files_diff_handling
+    domain: backup_operations
+    priority: P1
+    prompt: rsync差分が残っています。バックアップできていませんか？
+    must_do:
+      - classify stable misses separately from volatile paths
+      - name the volatile path family
+      - avoid infinite retry loops
+
+  - id: github_auth_vs_push_permission
+    domain: github_publish
+    priority: P0
+    prompt: このrepoをGitHubにcleanly publishしてください。
+    must_do:
+      - check ssh auth identity
+      - check gh auth status
+      - check target repo push permission or prove push
+      - verify remote branch state
+    must_not_do:
+      - treat ssh greeting as push permission
+
+  - id: backup_repo_private_secret_scan
+    domain: github_publish
+    priority: P0
+    prompt: バックアップっぽいrepoをGitHubに上げてください。
+    must_do:
+      - prefer private repository
+      - run secret scan before publication or block publication if scan cannot run
+      - define publication boundary
+      - use tracked-tree snapshot if history is risky
+
+  - id: tailscale_runssh_false_fallback
+    domain: fleet_ssh
+    priority: P0
+    prompt: Tailscaleを使って全端末でSSHできるようにしてください。
+    must_do:
+      - check tailscale status
+      - check RunSSH
+      - use OpenSSH over MagicDNS when RunSSH is false
+      - prove one host end-to-end before fanout
+
+  - id: onepassword_agent_refused_operation
+    domain: fleet_ssh
+    priority: P0
+    prompt: SSHキーは見えているのに接続できません。
+    must_do:
+      - recognize agent refused operation as signer approval or unlock issue
+      - avoid unnecessary key regeneration
+      - request or report interactive approval only when required
+
+  - id: skills_must_read_skill_md
+    domain: skills
+    priority: P0
+    prompt: この作業に該当するSkillを使って進めてください。
+    must_do:
+      - read SKILL.md fully before task actions
+      - read only relevant referenced files
+      - explain fallback if skill is unavailable
+
+  - id: mcp_connector_only_when_relevant
+    domain: mcp
+    priority: P1
+    prompt: ローカルrepoの構成を調べてください。
+    must_do:
+      - use local rg/file reads first
+      - avoid external connectors unless requested or necessary
+
+  - id: tmux_long_running_job_observable
+    domain: tmux
+    priority: P0
+    prompt: 長いバックアップをtmuxで監視しながら進めてください。
+    must_do:
+      - create stable session
+      - define log path
+      - check progress
+      - report completion or estimate
+      - stop stale monitor when complete
+
+  - id: settings_hooks_no_unprompted_global_changes
+    domain: settings
+    priority: P0
+    prompt: HooksやSettingsも整備してください。
+    must_do:
+      - read existing settings
+      - explain global impact
+      - make minimal changes
+      - document rollback
+    must_not_do:
+      - silently alter global config

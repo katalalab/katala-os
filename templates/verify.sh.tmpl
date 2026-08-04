@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# verify.sh — repo-local drift + sanity checker for {{REPO_NAME}}.
+# Read-only. Non-zero exit on any failure. Safe to run on every save.
+#
+# Checks:
+#   1. manifest.lock.json artifacts match SHA256 on disk (delegates to shared verify-manifest.sh).
+#   2. AGENTS.md exists and references the global baseline.
+#   3. No tracked files match the secret/backup blocklist (defense-in-depth vs. the pre-commit hook).
+#   4. JSON syntax validates for *.mcp.json, settings.json, package.json.
+
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
+
+SHARED_VERIFY="{{AGENT_CONTEXT_PATH}}/scripts/verify-manifest.sh"
+LOCK="$ROOT_DIR/manifest.lock.json"
+
+FAIL=0
+
+step() { printf '\n== %s ==\n' "$1"; }
+
+step "1. Manifest drift"
+if [ -f "$LOCK" ]; then
+  if [ -x "$SHARED_VERIFY" ]; then
+    if ! "$SHARED_VERIFY" "$LOCK"; then
+      FAIL=1
+    fi
+  else
+    printf 'shared verifier missing or not executable: %s\n' "$SHARED_VERIFY" >&2
+    printf '  -> fix: chmod +x %s\n' "$SHARED_VERIFY" >&2
+    FAIL=1
+  fi
+else
+  printf 'no manifest.lock.json — skipping (this repo is not hash-locked).\n'
+fi
+
+step "2. AGENTS.md baseline reference"
+if [ -f "$ROOT_DIR/AGENTS.md" ]; then
+  if ! grep -q 'work/agent-context/AGENTS.MD' "$ROOT_DIR/AGENTS.md"; then
+    printf 'AGENTS.md missing reference to global baseline (~/work/agent-context/AGENTS.MD)\n' >&2
+    FAIL=1
+  fi
+else
+  printf 'AGENTS.md missing at repo root\n' >&2
+  FAIL=1
+fi
+
+step "3. Tracked secret/backup blocklist"
+BLOCK_RE='(^|/)(\.env(\..*)?$|.*\.key$|.*\.pem$|.*credentials\.json$|.*token\.json$|.*\.bak-[0-9]{8}-[0-9]{6}.*)'
+if command -v git >/dev/null 2>&1 && [ -d "$ROOT_DIR/.git" ]; then
+  TRACKED=$(git -C "$ROOT_DIR" ls-files)
+  BAD=$(printf '%s\n' "$TRACKED" | grep -E "$BLOCK_RE" | grep -vE '\.env\.(example|template|sample)$' || true)
+  if [ -n "$BAD" ]; then
+    printf 'tracked sensitive/backup files (should be in .gitignore):\n%s\n' "$BAD" >&2
+    FAIL=1
+  fi
+else
+  printf 'not a git repo — skipping tracked-file check\n'
+fi
+
+step "4. JSON syntax"
+if command -v jq >/dev/null 2>&1; then
+  JSON_TARGETS=$(find "$ROOT_DIR" -type f \( -name '*.mcp.json' -o -name 'settings.json' -o -name 'package.json' -o -name 'manifest.lock.json' \) -not -path '*/node_modules/*' -not -path '*/.git/*')
+  for f in $JSON_TARGETS; do
+    if ! jq empty "$f" >/dev/null 2>&1; then
+      printf 'invalid JSON: %s\n' "$f" >&2
+      FAIL=1
+    fi
+  done
+else
+  printf 'jq not on PATH — skipping JSON syntax check\n'
+fi
+
+printf '\n'
+if [ "$FAIL" -eq 0 ]; then
+  printf 'verify: OK\n'
+  exit 0
+fi
+printf 'verify: FAIL\n' >&2
+exit 1

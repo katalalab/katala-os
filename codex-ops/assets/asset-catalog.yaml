@@ -1,0 +1,92 @@
+version: 0.1.0
+updated: 2026-06-17
+scope: codex_ops_agent_assets
+
+assets:
+  - id: backup_asset_index_script
+    type: script
+    path: codex-ops/scripts/backup-asset-index.sh
+    purpose: Generate a metadata-only restore index for high-value backup trees.
+    inputs:
+      - backup_root
+      - optional_output_dir
+    outputs:
+      - _index/README.md
+      - _index/asset-map.tsv
+      - _index/sqlite-integrity.tsv
+      - _index/restore-checklist.md
+      - _index/by-category/<category>/README.md
+    safety_boundary:
+      - metadata_only
+      - no_raw_sqlite_rows
+      - no_auth_json
+      - no_ssh_private_keys
+      - no_tokens_or_cookies
+    verification:
+      - bash -n codex-ops/scripts/backup-asset-index.sh
+      - run script against fixture backup root
+      - awk check for BAD rows in sqlite-integrity.tsv
+
+  - id: backup_asset_index_runbook
+    type: runbook
+    path: codex-ops/runbooks/backup-asset-index.md
+    purpose: Explain when and how to generate the backup asset index.
+    verification:
+      - markdown exists
+      - script path matches catalog
+
+  - id: learning_data_assetization_runbook
+    type: runbook
+    path: codex-ops/runbooks/learning-data-assetization.md
+    purpose: Define how to convert operational evidence into safe, reusable learning data.
+    verification:
+      - markdown exists
+      - validate-learning-data.sh passes
+
+  - id: backup_verification_runbook
+    type: runbook
+    path: codex-ops/runbooks/backup-verification.md
+    purpose: Define completion gates for Drive, rsync, and external SSD backups.
+    key_rules:
+      - transfer_finished_is_not_enough
+      - stable_diff_or_exception_classification_required
+      - cloud_upload_evidence_required_for_cloud_targets
+
+  - id: codex_ops_antipatterns
+    type: taxonomy
+    path: codex-ops/antipatterns.md
+    purpose: Human-readable failure taxonomy for operational guardrails.
+    paired_machine_data:
+      - codex-ops/evals/antipattern-cases.yaml
+
+  - id: agent_learning_dataset
+    type: learning_dataset
+    path: codex-ops/evals/agent-learning-dataset.jsonl
+    purpose: Agent-readable examples that map triggers to desired behavior, forbidden behavior, evidence, and verification.
+    validation:
+      - codex-ops/scripts/validate-learning-data.sh
+
+  - id: preference_dataset
+    type: preference_dataset
+    path: codex-ops/evals/preference-dataset.jsonl
+    purpose: Good/bad response pairs for local operational preference checks.
+    validation:
+      - codex-ops/scripts/validate-learning-data.sh
+
+  - id: regression_eval_cases
+    type: eval_cases
+    path: codex-ops/evals/eval-cases.yaml
+    purpose: Regression prompts and must-do criteria for high-risk local workflows.
+    validation:
+      - ruby YAML parse
+
+  - id: ssd_backup_status_report
+    type: machine_local_evidence
+    path: $HOME/work/docs/env-setup-backups/ssd-backup-index-status-2026-06-17.md
+    purpose: Local evidence for repaired SSD backup, generated index, and GitHub publication.
+    publish_boundary:
+      - summary_ok
+      - no_secret_contents
+      - do_not_publish_raw_db_or_auth_files
+    retention:
+      rule: Keep alongside environment setup evidence unless superseded by a newer dated status report.

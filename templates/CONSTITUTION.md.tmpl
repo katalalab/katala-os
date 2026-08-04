@@ -1,0 +1,43 @@
+# Constitution — {{REPO_NAME}}
+
+Date: {{DATE}}. Operator: {{OPERATOR}}. Hash-lockable subset of repo rules. The deliberately-narrow set that **never drifts**.
+
+This repo-local constitution layers on top of the global `~/work/agent-context/CONSTITUTION.md`. If a rule here contradicts the global constitution, **the global constitution wins**. Adding or evolving a rule below requires a signed, dated commit to this file alone.
+
+## Inherits (do not duplicate)
+
+The three unwritten rules and operating defaults from the global constitution apply to this repo as-is:
+
+1. Asynchronous, file-based substrates over network APIs.
+2. Zero-trust / minimal attack surface — secrets via 1Password (`op://`) only.
+3. Multi-agent consensus before destructive change; dissent routes to `NEEDS_REVIEW.md`.
+
+Read: `~/work/agent-context/CONSTITUTION.md`.
+
+## Repo-specific non-negotiables
+
+<!-- Add only what is truly invariant for this repo. Examples to consider:
+- Public API surface at `src/<module>/__init__.py` is stable; breaking changes require a major-version bump.
+- Database migrations are append-only; never edit a committed migration.
+- The `main` branch is always deployable; merges require green CI + one human review.
+-->
+
+## Hash-lock target
+
+To detect drift, compute and compare:
+
+macOS / Linux:
+
+```bash
+shasum -a 256 ./CONSTITUTION.md
+```
+
+Windows (PowerShell):
+
+```powershell
+Get-FileHash .\CONSTITUTION.md -Algorithm SHA256
+```
+
+Expected hash is recorded in `manifest.lock.json` next to this file. Drift checker: `./scripts/verify.sh` (or the shared `{{AGENT_CONTEXT_PATH}}/scripts/verify-manifest.sh ./manifest.lock.json`).
+
+Hash mismatch on session start = constitutional change pending review. Resolve before any other write work in the session.

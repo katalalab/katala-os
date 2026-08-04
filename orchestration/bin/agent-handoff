@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# agent-handoff — ヘッドレス不可なGUIエージェントへ task brief を渡して開く human-in-the-loop 窓口。
+# 現状の対象: antigravity (Google Antigravity IDE。ヘッドレスCLIを持たないため自動駆動は不可)。
+#
+# 使い方:
+#   agent-handoff antigravity "<task>" [dir]
+#   echo "<task>" | agent-handoff antigravity - [dir]
+#
+# 動作: task brief を brief ファイルに書き、対象GUIアプリで作業ディレクトリを開く。
+#       brief ファイルは単一の固定先を上書きするだけなので残骸は溜まらない(retention不要)。
+set -euo pipefail
+
+usage() {
+  sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'
+}
+
+case "${1:-}" in
+  -h|--help|help)
+    usage
+    exit 0
+    ;;
+esac
+
+TARGET="${1:-}"; shift || true
+TASK="${1:-}"; shift || true
+DIR="${1:-$PWD}"
+
+[ -z "$TARGET" ] && { usage >&2; exit 2; }
+if [ "$TASK" = "-" ] || { [ -z "$TASK" ] && [ ! -t 0 ]; }; then TASK="$(cat)"; fi
+[ -z "$TASK" ] && { echo "agent-handoff: task が空です" >&2; exit 2; }
+[ -d "$DIR" ] || { echo "agent-handoff: ディレクトリが存在しません: $DIR" >&2; exit 2; }
+
+case "$TARGET" in
+  antigravity)
+    [ -d "/Applications/Antigravity.app" ] || { echo "agent-handoff: Antigravity.app が見つかりません" >&2; exit 1; }
+    brief_dir="$HOME/.claude/antigravity-handoffs"; mkdir -p "$brief_dir"
+    brief="$brief_dir/current-task.md"
+    {
+      echo "# Antigravity handoff task"
+      echo
+      echo "- 作業ディレクトリ: $DIR"
+      echo "- 受け渡し時刻: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+      echo
+      echo "## タスク"
+      echo
+      printf '%s\n' "$TASK"
+    } > "$brief"
+    open -a Antigravity "$DIR"
+    echo "Antigravity を起動し $DIR を開きました。"
+    echo "task brief: $brief"
+    echo "GUIのエージェントに上記briefを貼り付けて実行してください(ヘッドレス自動実行は不可)。"
+    ;;
+  *)
+    echo "agent-handoff: 未対応のターゲット '$TARGET' (対応: antigravity)" >&2
+    exit 2
+    ;;
+esac

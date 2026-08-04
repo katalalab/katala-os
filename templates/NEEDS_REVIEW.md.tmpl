@@ -1,0 +1,26 @@
+# NEEDS_REVIEW — {{REPO_NAME}}
+
+Multi-agent consensus dissents land here. Append, do not overwrite. Operator ratifies; agents never silently close.
+
+Routing rule (from global `AGENTS.MD` / `CONSTITUTION.md`):
+
+- Runtime / auth / state mutation, push to `main`, PR merge, or secret exposure requires a second opinion.
+- Constitutional dissent (`CONSTITUTION.md` rules) halts the change until the operator ratifies.
+- Non-constitutional dissent is logged here as signal; the change may still proceed if the operator overrides explicitly in the same entry.
+
+## Entry format
+
+```
+## {{DATE}} — <one-line summary>
+
+- Change: <what was proposed>
+- Source: <file paths, PR / commit ref>
+- Reviewers: <agent A verdict>, <agent B verdict>
+- Constitutional? yes | no
+- Operator decision: pending | approved | rejected | deferred
+- Notes: <free text>
+```
+
+## Entries
+
+<!-- Newest entries on top. Keep the file append-only. -->

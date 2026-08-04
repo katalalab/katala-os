@@ -1,0 +1,114 @@
+version: 0.1.0
+updated: 2026-06-17
+cases:
+  - id: backup_start_as_completion
+    domain: backup_operations
+    severity: P0
+    trigger_signals:
+      - user asks whether backup is complete
+      - copy command has run but final evidence is missing
+    antipattern: Treating copy start or rsync invocation as backup completion.
+    preferred_behavior:
+      - inspect destination
+      - verify stable diff or classify volatile exceptions
+      - verify cloud upload when target is cloud-synced
+      - write or cite final report
+    forbidden_behavior:
+      - say complete from folder existence alone
+      - ignore active transfer process
+    evidence_required:
+      - command output or final report path
+      - stable diff or exception classification
+
+  - id: corrupted_live_sqlite_backup
+    domain: backup_operations
+    severity: P0
+    trigger_signals:
+      - sqlite integrity_check reports BAD
+      - backup copied live WAL-mode DB files
+    antipattern: Treating live-copied SQLite files as valid without integrity checks.
+    preferred_behavior:
+      - preserve broken DB and sidecars first
+      - generate replacement from healthy source with sqlite3 .backup
+      - run pragma integrity_check on repaired files
+      - record rollback and retention
+    forbidden_behavior:
+      - overwrite the only broken copy without backup
+      - claim repair without integrity_check
+    evidence_required:
+      - repair backup path
+      - integrity_check OK count
+      - rollback command
+
+  - id: raw_backup_tree_as_learning_data
+    domain: learning_data
+    severity: P0
+    trigger_signals:
+      - user asks to make backups into learning data
+      - backup contains auth, SSH, SQLite, logs, or shell snapshots
+    antipattern: Turning raw private assets into training examples.
+    preferred_behavior:
+      - extract metadata, patterns, prompts, decisions, and verification rules
+      - keep secrets and raw DB/log contents out
+      - record local-only evidence paths when useful
+    forbidden_behavior:
+      - embed tokens, auth JSON, private keys, cookies, raw session logs, or DB rows
+      - publish backup-like material publicly
+    evidence_required:
+      - secret scan or pattern scan
+      - metadata-only dataset shape
+
+  - id: worktree_draft_sync
+    domain: framework_publication
+    severity: P1
+    trigger_signals:
+      - local worktree has uncommitted changes
+      - framework is being copied to canonical or backup paths
+    antipattern: Syncing draft worktree contents into a supposedly published framework.
+    preferred_behavior:
+      - export from a verified Git commit when mirroring framework files
+      - preserve pre-sync copy with retention
+      - re-run verifier after sync
+    forbidden_behavior:
+      - rsync a dirty worktree into canonical context without noting it
+    evidence_required:
+      - git status
+      - commit hash
+      - sync backup path
+
+  - id: github_ssh_auth_as_push_permission
+    domain: github_publish
+    severity: P0
+    trigger_signals:
+      - SSH greeting succeeds
+      - push or branch cleanup still fails
+    antipattern: Treating GitHub SSH authentication as repository write permission.
+    preferred_behavior:
+      - check gh auth status
+      - check repo viewerPermission or push dry-run
+      - verify remote branch head after push
+    forbidden_behavior:
+      - stop at ssh -T greeting
+    evidence_required:
+      - gh auth or repo permission output
+      - git push or git push --dry-run output
+      - git ls-remote result
+
+  - id: tmux_backup_without_retention
+    domain: tmux
+    severity: P1
+    trigger_signals:
+      - long-running backup creates rollback or repair directories
+      - monitor job writes logs
+    antipattern: Creating backup surfaces without a retention rule and prune step.
+    preferred_behavior:
+      - define retention before creating backup
+      - implement or record matching prune step
+      - verify no stale monitor remains
+    forbidden_behavior:
+      - leave unbounded backup directories
+      - leave stale tmux monitor after completion
+    evidence_required:
+      - retention rule
+      - prune command or script
+      - tmux/process status

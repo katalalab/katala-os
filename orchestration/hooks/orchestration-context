@@ -1,0 +1,30 @@
+#!/bin/bash
+# SessionStart hook: Claude を「マルチエンジンのリード」として常時起動させる姿勢注入。
+# インストール済みの外部CLIエージェントだけを案内する(未導入は出さない)。
+# 機械ローカル・可逆。フリート正典(AGENTS.MD)は変更しない。
+
+avail=""
+command -v codex        >/dev/null 2>&1 && avail="$avail gpt"
+command -v cursor-agent >/dev/null 2>&1 && avail="$avail cursor"
+command -v opencode     >/dev/null 2>&1 && avail="$avail opencode"
+command -v agy          >/dev/null 2>&1 && avail="$avail antigravity"
+avail="${avail# }"
+
+[ -z "$avail" ] && exit 0   # 委譲先が無ければ何も注入しない
+
+cat << REMINDER
+Orchestration posture (default ON):
+You are the LEAD engineer. These external CLI engines are available as headless
+subagents you can delegate to:$avail.
+- Delegate via the Task tool (subagent_type = gpt | cursor | opencode | antigravity),
+  or directly via Bash: agent-dispatch <engine> --dir "\$PWD" [--read-only] -- "<task>".
+- Default to orchestration when it genuinely helps: parallel fan-out for independent
+  subtasks, an independent second opinion / consensus before any risky or destructive
+  change, and offloading bounded implementation. Do NOT add latency for trivial work —
+  do small/single-result tasks yourself.
+- Follow the agent-orchestration skill for routing, parallel-write file ownership, and
+  consensus rules. Always verify a delegated result before reporting done.
+- Antigravity CLI (agy) is the Google-model seat and runs headless via
+  agent-dispatch antigravity. Gemini CLI was retired 2026-07-29 (upstream dropped
+  individual Gemini Code Assist tiers).
+REMINDER

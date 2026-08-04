@@ -1,0 +1,220 @@
+#!/usr/bin/env bash
+# agent-dispatch — リードエージェントが外部CLIエージェントをヘッドレスで1台呼び出す統一窓口。
+#
+# 対応バックエンド: gpt(codex) / claude / cursor(cursor-agent) / opencode / antigravity(agy) / grok
+# Gemini CLI は 2026-07-29 に上流が個人向け Gemini Code Assist を打ち切ったため撤去(IneligibleTierError)。
+# Google 席は antigravity(agy -p)が引き継ぐ。
+#
+# claude バックエンドは「Claudeがリード」の逆方向、つまり Codex/他エンジンから Claude を
+# 呼ぶ経路。Claude Max の正規インターフェース(claude -p)を使うのでAPIキー不要。
+# 相互呼び出しのピンポンを避けるため、呼ばれた側は再ディスパッチしないこと。
+#
+# 使い方:
+#   agent-dispatch <backend> [options] -- "<prompt>"
+#   echo "<prompt>" | agent-dispatch <backend> [options]
+#
+# options:
+#   --dir DIR        作業ディレクトリ (既定: 現在のディレクトリ)
+#   --model M        モデル上書き (バックエンド固有の表記)
+#   --timeout S      タイムアウト秒 (既定: 600)
+#   --read-only      読み取り専用/プランモードで実行 (ファイル変更を禁止)
+#   --raw            バックエンド生出力をそのまま流す (整形・ヘッダ除去なし)
+#   -h, --help       このヘルプ
+#
+# 推奨 --model 例 (2026-07-31 ローカル検証 / 詳細は ~/work/docs/frontier-models/latest.md):
+#   gpt|codex:     gpt-5.6-terra (日常) / gpt-5.6-sol (難所) / gpt-5.6-luna (安価)
+#   claude:        opus / sonnet / haiku / opus[1m] / fable[1m]
+#   cursor:        gpt-5.6-terra-medium / gpt-5.6-sol-medium / claude-opus-5-thinking-high
+#                  (一覧: cursor-agent models)
+#   antigravity:   gemini-3.6-flash-high 等 (一覧: agy models)
+#   opencode:      opencode-go/deepseek-v4-flash 等
+#
+# 既定は「フル権限(書き込み可・非対話)」。これは operator の高自律ポスチャ(CLAUDE.md)に従う。
+# 読み取りのみで安全に意見だけ欲しい場合は --read-only を付ける。
+#
+# 出力: 既定で「エージェントの最終回答のみ」を stdout に出す。失敗時は stderr に診断を出し非0で終了。
+set -euo pipefail
+
+usage() { sed -n '2,34p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+
+BACKEND="${1:-}"
+case "$BACKEND" in -h|--help) usage 0 ;; "") usage 1 ;; esac
+shift
+
+DIR="$PWD"
+MODEL=""
+TIMEOUT=600
+READ_ONLY=0
+RAW=0
+PROMPT=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --dir) DIR="$2"; shift 2 ;;
+    --model) MODEL="$2"; shift 2 ;;
+    --timeout) TIMEOUT="$2"; shift 2 ;;
+    --read-only) READ_ONLY=1; shift ;;
+    --raw) RAW=1; shift ;;
+    -h|--help) usage 0 ;;
+    --) shift; PROMPT="$*"; break ;;
+    *) PROMPT="$*"; break ;;
+  esac
+done
+
+# プロンプトが引数で来なければ stdin から読む
+if [ -z "$PROMPT" ] && [ ! -t 0 ]; then
+  PROMPT="$(cat)"
+fi
+if [ -z "$PROMPT" ]; then
+  echo "agent-dispatch: プロンプトが空です" >&2
+  exit 2
+fi
+if [ ! -d "$DIR" ]; then
+  echo "agent-dispatch: ディレクトリが存在しません: $DIR" >&2
+  exit 2
+fi
+
+# 使用量ガバナー前処理: codex=無制限 / opencode-go=5h/週/月キャップ確認 / claude=レートのみ。
+# 既定ON、USAGE_GATE=0 で無効化、usage-gate 不在や失敗時は fail-open (ディスパッチを止めない)。
+if [ "${USAGE_GATE:-1}" = 1 ] && command -v usage-gate >/dev/null 2>&1; then
+  gate_engine=""
+  case "$BACKEND" in
+    gpt|codex) gate_engine="codex" ;;
+    opencode) case "$MODEL" in *opencode-go*|*glm*|*kimi*|*deepseek-v4-*) gate_engine="opencode-go" ;; *) gate_engine="free" ;; esac ;;
+  esac
+  if [ -n "$gate_engine" ]; then
+    if gate_out="$(usage-gate "$gate_engine" 2>/dev/null)"; then gate_rc=0; else gate_rc=$?; fi
+    if [ "$gate_rc" = 20 ]; then
+      echo "agent-dispatch: usage-gate HOLD -> ${gate_out#*|*|}" >&2
+      echo "agent-dispatch: 上限近接のため停止。回避は無料tier(ollama/Zen)か USAGE_GATE=0。" >&2
+      exit 3
+    elif [ "$gate_rc" = 10 ]; then
+      echo "agent-dispatch: usage-gate WARN -> ${gate_out#*|*|}" >&2
+    fi
+  fi
+fi
+
+# timeout コマンドの実体 (macOS は gtimeout のことがある)
+TO="timeout"
+command -v timeout >/dev/null 2>&1 || TO="gtimeout"
+command -v "$TO" >/dev/null 2>&1 || TO=""   # 無ければタイムアウト無しで実行
+run() { if [ -n "$TO" ]; then "$TO" "$TIMEOUT" "$@"; else "$@"; fi; }
+
+strip_ansi() { sed -E 's/\x1b\[[0-9;]*[mGKHF]//g'; }
+
+case "$BACKEND" in
+  gpt|codex)
+    msg="$(mktemp)"; err="$(mktemp)"
+    sandbox=(); [ "$READ_ONLY" = 1 ] && sandbox=(-s read-only)
+    model=();   [ -n "$MODEL" ] && model=(-m "$MODEL")
+
+    # Windows の Codex サンドボックスは制限トークン下で PowerShell 7 を起動できない。pwsh.exe は
+    # 単体実行不可で隣接 .NET ホストとネイティブライブラリを起動時にロードするため初期化に失敗し、
+    # 表層はノード次第で 0xC0000142 / Appx 未登録 / runner pipe-in timeout に化ける
+    # (openai/codex#14057, #17847 — 2026-07-26 時点いずれも未修正)。素の Win32 な System32 の
+    # powershell.exe 5.1 なら -s read-only のまま動くので、pwsh を持つ PATH 要素だけ落として掴ませる。
+    # node_repl はサンドボックス外の JS で読み取りを代行し、シェルが全滅していても回答を作ってしまう
+    # (=障害が無言で隠れる) ため、レビュー経路では落として失敗を表に出す。
+    # 解除条件: 上流 issue が閉じ、サンドボックス下で pwsh が起動するようになったらこのブロックを削除する。
+    # 既知の限界: Codex は PATH に加えて C:\Program Files\PowerShell\7 を直接探索するため、
+    # そこに MSI 版 pwsh があるノードでは PATH 除去だけでは足りない。
+    ro_opts=(); ro_path="$PATH"
+    case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) is_windows=1 ;; *) is_windows=0 ;; esac
+    if [ "$READ_ONLY" = 1 ] && [ "$is_windows" = 1 ]; then
+      # PATH の空要素は POSIX 上「カレントディレクトリ」を意味するが、意図的に落とす。
+      # 読み取り専用レビューでレビュー対象リポジトリ直下の実行ファイルを拾わせたくない。
+      ro_path=""
+      while IFS= read -r p; do
+        if [ -z "$p" ]; then continue; fi
+        if [ -e "$p/pwsh.exe" ] || [ -e "$p/pwsh" ]; then continue; fi
+        ro_path="${ro_path:+$ro_path:}$p"
+      done <<EOF
+$(printf '%s' "$PATH" | tr ':' '\n')
+EOF
+      # 全要素が落ちると codex も timeout も解決できず原因不明の失敗になるので、明示的に落とす。
+      if [ -z "$ro_path" ]; then
+        echo "agent-dispatch(gpt): PATH の全要素が pwsh を持つため read-only 用 PATH を構成できません。" >&2
+        rm -f "$msg" "$err"; exit 5
+      fi
+      ro_opts=(-c mcp_servers.node_repl.enabled=false)
+    fi
+
+    if PATH="$ro_path" run codex exec --skip-git-repo-check --color never -C "$DIR" \
+         "${sandbox[@]}" "${ro_opts[@]}" "${model[@]}" -o "$msg" "$PROMPT" </dev/null >/dev/null 2>"$err"; then
+      if [ -s "$msg" ]; then cat "$msg"; else tail -20 "$err" >&2; rm -f "$msg" "$err"; exit 1; fi
+    else
+      rc=$?; echo "agent-dispatch(gpt): codex exec が失敗 (rc=$rc)" >&2; tail -20 "$err" >&2
+      rm -f "$msg" "$err"; exit "$rc"
+    fi
+    rm -f "$msg" "$err"
+    ;;
+
+  claude)
+    permission=(--permission-mode bypassPermissions)
+    if [ "$READ_ONLY" = 1 ]; then
+      permission=(
+        --permission-mode dontAsk
+        --tools Read,Glob,Grep,Bash
+        --no-session-persistence
+      )
+    fi
+    if [ -n "$MODEL" ]; then
+      ( cd "$DIR" && run claude -p --output-format text "${permission[@]}" --model "$MODEL" "$PROMPT" )
+    else
+      ( cd "$DIR" && run claude -p --output-format text "${permission[@]}" "$PROMPT" )
+    fi
+    ;;
+
+  cursor)
+    cursor_status="$(cursor-agent status 2>/dev/null || true)"
+    if printf '%s\n' "$cursor_status" | grep -qi 'not logged in' || \
+       ! printf '%s\n' "$cursor_status" | grep -qiE 'logged in|authenticated'; then
+      echo "agent-dispatch(cursor): 未認証です。対話端末で 'cursor-agent login' を実行してください。" >&2
+      exit 4
+    fi
+    mode=(--force); [ "$READ_ONLY" = 1 ] && mode=(--mode ask)
+    model=(); [ -n "$MODEL" ] && model=(--model "$MODEL")
+    run cursor-agent -p --output-format text --trust "${mode[@]}" "${model[@]}" \
+        --workspace "$DIR" "$PROMPT"
+    ;;
+
+  opencode)
+    cmd=(opencode run --dir "$DIR")
+    [ "$READ_ONLY" = 1 ] && cmd+=(--agent plan)
+    if [ "$READ_ONLY" = 1 ] && [ -z "$MODEL" ]; then MODEL="opencode-go/deepseek-v4-flash"; fi
+    [ -n "$MODEL" ] && cmd+=(-m "$MODEL")
+    cmd+=("$PROMPT")
+    if [ "$RAW" = 1 ]; then
+      run "${cmd[@]}"
+    else
+      # 先頭のモデルヘッダ行(> build · model)と ANSI を除去し、先頭の空行を落として回答本体だけ残す
+      run "${cmd[@]}" \
+        | strip_ansi | grep -vE '^[[:space:]]*>[[:space:]]' | sed '/./,$!d'
+    fi
+    ;;
+
+  antigravity)
+    cmd=(agy)
+    [ "$READ_ONLY" = 1 ] && cmd+=(--mode plan)
+    # ヘッドレスでは権限プロンプトを出せず全ツール呼び出しが自動拒否され空応答になるため、明示付与が必須
+    cmd+=(--dangerously-skip-permissions)
+    [ -n "$MODEL" ] && cmd+=(--model "$MODEL")
+    cmd+=(--add-dir "$DIR" -p "$PROMPT")
+    ( cd "$DIR" && run "${cmd[@]}" )
+    ;;
+
+  grok)
+    permission=(--permission-mode bypassPermissions)
+    [ "$READ_ONLY" = 1 ] && permission=(--permission-mode plan)
+    if [ -n "$MODEL" ]; then
+      run grok "${permission[@]}" --model "$MODEL" --single "$PROMPT" --cwd "$DIR" --output-format plain
+    else
+      run grok "${permission[@]}" --single "$PROMPT" --cwd "$DIR" --output-format plain
+    fi
+    ;;
+
+  *)
+    echo "agent-dispatch: 不明なバックエンド '$BACKEND' (有効: gpt claude cursor opencode antigravity grok)" >&2
+    exit 2
+    ;;
+esac

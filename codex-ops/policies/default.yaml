@@ -1,0 +1,86 @@
+name: codex-ops-default-policy
+version: 0.1.0
+status: draft
+
+principles:
+  - prefer repo and machine-local patterns over new abstractions
+  - use rg for search
+  - do not revert user changes without explicit request
+  - do not expose secrets or auth artifacts
+  - verify operational outcomes, not just command starts
+
+risk_rules:
+  low:
+    examples:
+      - read-only inventory
+      - documentation edits under $HOME/work/docs
+    approval: not_required
+    verification:
+      - file_exists_or_command_summary
+
+  medium:
+    examples:
+      - non-destructive local scripts
+      - test runs
+      - local package manifests
+    approval: not_required
+    verification:
+      - changed_files_summary
+      - command_exit_summary
+
+  high:
+    examples:
+      - GitHub publication
+      - backup operations
+      - SSH/Tailscale changes
+      - Codex settings changes
+      - external uploads
+    approval: explicit_user_request_or_confirmation_for_state_change
+    verification:
+      - preflight_record
+      - final_state_evidence
+      - residual_risk_summary
+
+  critical:
+    examples:
+      - destructive deletion
+      - public release of backup-like material
+      - credential movement
+      - broad config reset
+    approval: explicit_user_confirmation
+    verification:
+      - rollback_plan
+      - final_state_evidence
+      - audit_record
+
+completion_rules:
+  backup:
+    complete_requires:
+      - transfer_finished
+      - stable_diff_or_exception_classification
+      - destination_or_cloud_upload_evidence
+      - final_report
+  github_publish:
+    complete_requires:
+      - local_clean_or_explained
+      - remote_state_verified
+      - push_permission_verified
+      - secret_scan_if_sensitive
+  tmux_long_job:
+    complete_requires:
+      - process_finished_or_intentionally_running
+      - logs_checked
+      - stale_monitor_removed_if_done
+  settings_change:
+    complete_requires:
+      - existing_config_read
+      - minimal_change
+      - verification_or_reason_not_run
+
+forbidden_without_explicit_request:
+  - git reset --hard
+  - git checkout -- .
+  - rm -rf on user data
+  - deleting backups
+  - publishing private or backup-like data publicly
+  - editing auth.json or private keys

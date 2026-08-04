@@ -1,0 +1,137 @@
+name: local-codex-ops
+version: 0.1.0
+owner: youruser
+status: draft
+description: Local operating package for Codex skills, MCP, settings, hooks, tmux, subagents, and evals.
+
+applies_to:
+  roots:
+    - $HOME
+  docs:
+    - codex-ops
+
+capabilities:
+  skills:
+    required_behavior:
+      - read matching SKILL.md before using a skill
+      - read only relevant referenced files
+      - do not delegate skill instruction interpretation to subagents
+  mcp:
+    explicit:
+      - node_repl
+    rule:
+      - use connectors only when external workspace context is requested or necessary
+      - prefer local rg/file inspection for local-only work
+  tmux:
+    use_for:
+      - long_running_backup
+      - long_running_build
+      - long_running_test
+      - fleet_check
+      - large_scan
+    requires:
+      - session_name
+      - wrapper_or_command
+      - log_file
+      - progress_check
+      - stop_command
+      - final_report
+  subagents:
+    use_for:
+      - parallel_read_only_inventory
+      - independent_design_review
+      - eval_design
+      - failure_mode_extraction
+    restrictions:
+      - main_agent_keeps_final_judgment
+      - avoid_overlapping_write_sets
+      - close_completed_agents
+
+dependencies:
+  shell_tools:
+    - rg
+    - git
+    - tmux
+    - ps
+    - sed
+    - awk
+  optional_tools:
+    - gh
+    - gitleaks
+    - tailscale
+    - fileproviderctl
+    - rsync
+    - sqlite3
+    - ruby
+
+permissions:
+  filesystem:
+    read:
+      - $HOME
+    write_default:
+      - codex-ops
+    high_risk_write:
+      - $HOME/.codex
+      - $HOME/.ssh
+      - $HOME/Library
+  network:
+    default: task_dependent
+    require_reason_for:
+      - github
+      - google_drive
+      - slack
+      - browser
+      - web_search
+  destructive_commands:
+    default: deny_without_explicit_user_request
+
+preflight:
+  default:
+    - identify_task_family
+    - identify_write_scope
+    - check_for_sensitive_paths
+  backup:
+    - verify_destination_mount
+    - define_stable_vs_volatile_paths
+    - define_completion_artifact
+    - generate_metadata_only_asset_index
+  github_publish:
+    - git_status
+    - gh_auth_status
+    - push_permission_check
+    - secret_scan_or_block_if_sensitive
+  settings_change:
+    - read_existing_config
+    - create_change_summary
+    - define_rollback
+  fleet_ssh:
+    - tailscale_status
+    - runssh_check
+    - tcp_22_check
+    - ssh_g_expansion
+    - one_host_e2e
+
+postflight:
+  default:
+    - summarize_changed_files
+    - summarize_verification
+    - record_residual_risks
+  backup:
+    - rsync_stats_or_equivalent
+    - final_diff_or_exception_classification
+    - cloud_upload_or_destination_evidence
+    - asset_index_or_restore_map
+    - sqlite_integrity_status_for_agent_state
+  tmux:
+    - no_stale_monitor_sessions
+    - final_report_written
+
+evals:
+  preference_dataset: codex-ops/evals/preference-dataset.jsonl
+  learning_dataset: codex-ops/evals/agent-learning-dataset.jsonl
+  antipattern_cases: codex-ops/evals/antipattern-cases.yaml
+  regression_cases: codex-ops/evals/eval-cases.yaml
+  validator: codex-ops/scripts/validate-learning-data.sh
+
+assets:
+  catalog: codex-ops/assets/asset-catalog.yaml

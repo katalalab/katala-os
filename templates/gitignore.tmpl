@@ -1,0 +1,63 @@
+# Baseline .gitignore for Katala OS repos. Defense-in-depth alongside the
+# shared pre-commit hook. Add language-specific entries below the divider.
+
+# --- Secrets, keys, tokens (never commit) ---
+.env
+.env.*
+!.env.example
+!.env.template
+!.env.sample
+*.key
+*.pem
+*.pfx
+*.crt
+credentials.json
+token.json
+auth.json
+*.id_rsa
+*.id_ed25519
+
+# --- Backups ---
+*.bak
+*.bak-*
+*.bak.*
+*-bak-*
+*.orig
+
+# --- OS / editor cruft ---
+.DS_Store
+Thumbs.db
+desktop.ini
+._*
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- Shell history (per Hard Rule) ---
+*ConsoleHost_history.txt
+.bash_history
+.zsh_history
+.python_history
+.node_repl_history
+
+# --- Build / cache (generic) ---
+.tmp/
+tmp/
+*.log
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+target/
+coverage/
+.coverage
+.nyc_output/
+
+# --- Project-specific (add below) ---

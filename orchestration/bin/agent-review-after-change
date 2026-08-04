@@ -1,0 +1,292 @@
+#!/usr/bin/env bash
+# Run independent, read-only adversarial reviews only after a meaningful change.
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage:
+  agent-review-after-change [options]
+
+Runs Codex, Claude Code, and Antigravity as independent read-only reviewers when a
+working-tree change is large enough to warrant review. Small changes are
+skipped by design.
+
+Options:
+  --dir DIR             Git repository to review (default: current directory)
+  --force               Review regardless of the size threshold
+  --dry-run             Evaluate the trigger and selected reviewers only
+  --engines LIST        Comma-separated engines (codex,claude,antigravity)
+  --report-dir DIR      Persist reviewer outputs and a summary (optional)
+  --timeout SECONDS     Per-review timeout (default: 900)
+  --help                Show this help
+
+Environment model overrides:
+  CODEX_REVIEW_MODEL (default: gpt-5.6-sol)
+  CLAUDE_REVIEW_MODEL (default: opus)
+  ANTIGRAVITY_REVIEW_MODEL (default: agy built-in)
+
+Exit codes:
+  0 review skipped or all reviewers approved
+  2 one or more reviewers requested changes or returned an invalid verdict
+  3 changed paths include a secret-bearing file; use a manual review
+  4 a required reviewer was unavailable or timed out
+EOF
+}
+
+repo_dir="$PWD"
+force=0
+dry_run=0
+engines="codex,claude,antigravity"
+report_dir=""
+timeout_seconds=900
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dir) repo_dir="$2"; shift 2 ;;
+    --force) force=1; shift ;;
+    --dry-run) dry_run=1; shift ;;
+    --engines) engines="$2"; shift 2 ;;
+    --report-dir) report_dir="$2"; shift 2 ;;
+    --timeout) timeout_seconds="$2"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "agent-review-after-change: unknown option: $1" >&2; usage >&2; exit 64 ;;
+  esac
+done
+
+if [[ ! "$timeout_seconds" =~ ^[1-9][0-9]*$ ]]; then
+  echo "agent-review-after-change: --timeout must be a positive integer" >&2
+  exit 64
+fi
+
+repo_dir="$(cd "$repo_dir" && pwd)"
+if ! git -C "$repo_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "agent-review-after-change: not a git working tree: $repo_dir" >&2
+  exit 64
+fi
+
+report_relative=""
+if [[ -n "$report_dir" ]]; then
+  case "$report_dir" in
+    /*) report_absolute="$report_dir" ;;
+    *) report_absolute="$repo_dir/$report_dir" ;;
+  esac
+  report_parent="$(cd "$(dirname "$report_absolute")" && pwd)"
+  report_absolute="$report_parent/$(basename "$report_absolute")"
+  if [[ "$report_absolute" = "$repo_dir/"* ]]; then
+    report_relative="${report_absolute#"$repo_dir/"}"
+  fi
+  report_dir="$report_absolute"
+fi
+
+declare -a changed_files=()
+while IFS= read -r path; do
+  [[ -z "$path" || ( -n "$report_relative" && "$path" = "$report_relative"* ) ]] || changed_files+=("$path")
+done < <({ git -C "$repo_dir" diff --name-only HEAD; git -C "$repo_dir" ls-files --others --exclude-standard; } | sort -u)
+
+if [[ ${#changed_files[@]} -eq 0 ]]; then
+  echo "REVIEW_STATUS=SKIP_NO_CHANGES"
+  exit 0
+fi
+
+declare -a secret_paths=()
+code_files=0
+doc_files=0
+risk_files=0
+changed_lines=0
+
+for path in "${changed_files[@]}"; do
+  case "/$path" in
+    */.env|*/.env.*|*/secrets/*|*/credentials/*|*/id_rsa*|*/id_ed25519*|*/id_ecdsa*|*.pem|*.key|*.p12|*.pfx|*.npmrc|*/service-account*.json|*/.aws/credentials|*/.kube/config|*.tfvars|*/.docker/config.json)
+      secret_paths+=("$path")
+      ;;
+  esac
+  case "$path" in
+    *.ts|*.tsx|*.js|*.jsx|*.mjs|*.cjs|*.py|*.go|*.rs|*.java|*.kt|*.cs|*.c|*.cc|*.cpp|*.h|*.hpp|*.rb|*.php|*.sh|*.ps1)
+      code_files=$((code_files + 1))
+      ;;
+  esac
+  case "$path" in
+    *.md|*.mdx|docs/*|README*|CHANGELOG*|CONTRIBUTING*)
+      doc_files=$((doc_files + 1))
+      ;;
+  esac
+  case "$path" in
+    *auth*|*security*|*permission*|*migration*|*schema*|*deploy*|*infra*|*config*)
+      risk_files=$((risk_files + 1))
+      ;;
+  esac
+done
+
+while IFS=$'\t' read -r added deleted _; do
+  [[ "$added" =~ ^[0-9]+$ ]] && changed_lines=$((changed_lines + added))
+  [[ "$deleted" =~ ^[0-9]+$ ]] && changed_lines=$((changed_lines + deleted))
+done < <(git -C "$repo_dir" diff --numstat HEAD)
+for path in "${changed_files[@]}"; do
+  if git -C "$repo_dir" ls-files --others --exclude-standard -- "$path" | grep -q .; then
+    line_count=$(wc -l < "$repo_dir/$path" 2>/dev/null || echo 0)
+    [[ "$line_count" =~ ^[0-9]+$ ]] && changed_lines=$((changed_lines + line_count))
+  fi
+done
+
+if [[ ${#secret_paths[@]} -gt 0 ]]; then
+  echo "REVIEW_STATUS=MANUAL_SECRET_BOUNDARY"
+  printf 'SECRET_PATH=%s\n' "${secret_paths[@]}"
+  echo "Model review was not started. Remove the secret-bearing path from the change or perform a manual review."
+  exit 3
+fi
+
+should_review=0
+trigger="small-change"
+if [[ "$force" -eq 1 ]]; then
+  should_review=1
+  trigger="forced"
+elif [[ "$risk_files" -gt 0 ]]; then
+  should_review=1
+  trigger="risk-path"
+elif [[ ${#changed_files[@]} -ge 3 && "$code_files" -ge 2 ]]; then
+  should_review=1
+  trigger="implementation-slice"
+elif [[ "$changed_lines" -ge 120 && "$code_files" -ge 1 ]]; then
+  should_review=1
+  trigger="large-code-change"
+fi
+
+echo "REVIEW_SCOPE=files:${#changed_files[@]} code:${code_files} docs:${doc_files} lines:${changed_lines} risk:${risk_files}"
+if [[ "$should_review" -eq 0 ]]; then
+  echo "REVIEW_STATUS=SKIP_SMALL_CHANGE"
+  echo "REVIEW_TRIGGER=$trigger"
+  exit 0
+fi
+
+IFS=',' read -r -a selected_engines <<< "$engines"
+if [[ ${#selected_engines[@]} -lt 2 ]]; then
+  echo "agent-review-after-change: at least two independent engines are required" >&2
+  exit 64
+fi
+for engine in "${selected_engines[@]}"; do
+  case "$engine" in codex|claude|antigravity) ;; *) echo "agent-review-after-change: unsupported engine: $engine" >&2; exit 64 ;; esac
+done
+
+echo "REVIEW_STATUS=READY"
+echo "REVIEW_TRIGGER=$trigger"
+echo "REVIEW_ENGINES=$(IFS=,; echo "${selected_engines[*]}")"
+if [[ "$dry_run" -eq 1 ]]; then
+  exit 0
+fi
+
+if [[ -n "$report_dir" ]]; then
+  mkdir -p "$report_dir"
+fi
+
+timeout_binary=""
+if command -v timeout >/dev/null 2>&1; then
+  timeout_binary="timeout"
+elif command -v gtimeout >/dev/null 2>&1; then
+  timeout_binary="gtimeout"
+fi
+
+run_with_timeout() {
+  if [[ -n "$timeout_binary" ]]; then
+    "$timeout_binary" "$timeout_seconds" "$@"
+  else
+    "$@"
+  fi
+}
+
+changed_path_list=$(printf '%s\n' "${changed_files[@]}")
+review_prompt=$(cat <<EOF
+Act as an adversarial, read-only reviewer. Review the uncommitted change in this repository against HEAD, including changed documentation and implementation. Do not edit files, do not run network commands, and do not inspect secret-bearing paths such as .env, credentials, keys, or auth stores.
+
+Challenge the change rather than explaining it. Trace callers and affected contracts where useful. Assess correctness, regressions, security and permissions, data-loss or migration safety, concurrency, test coverage, and consistency between code and documentation. Report only findings grounded in the changed files or their direct callers.
+
+Changed paths:
+$changed_path_list
+
+End with exactly one line: VERDICT: APPROVE, VERDICT: REQUEST_CHANGES, or VERDICT: NEEDS_DISCUSSION.
+Before that line, use short sections named BLOCKERS, NON_BLOCKERS, COVERAGE_GAPS, and DOC_CONSISTENCY.
+EOF
+)
+
+declare -a failed_engines=()
+declare -a change_engines=()
+for engine in "${selected_engines[@]}"; do
+  output_file=$(mktemp)
+  error_file=$(mktemp)
+  model=""
+  case "$engine" in
+    codex)
+      model="${CODEX_REVIEW_MODEL:-gpt-5.6-sol}"
+      command=(codex exec --sandbox read-only --ephemeral --model "$model" --output-last-message "$output_file" "$review_prompt")
+      ;;
+    claude)
+      model="${CLAUDE_REVIEW_MODEL:-opus}"
+      command=(claude --print --permission-mode dontAsk --tools Read,Glob,Grep,Bash --no-session-persistence --max-turns 8 --max-budget-usd 5 --model "$model" --output-format text "$review_prompt")
+      ;;
+    antigravity)
+      model="${ANTIGRAVITY_REVIEW_MODEL:-}"
+      command=(agy --mode plan --dangerously-skip-permissions)
+      [ -n "$model" ] && command+=(--model "$model")
+      command+=(--add-dir "$repo_dir" -p "$review_prompt")
+      ;;
+  esac
+
+  if ! command -v "${command[0]}" >/dev/null 2>&1; then
+    echo "REVIEWER=$engine MODEL=$model STATUS=UNAVAILABLE reason=command-missing"
+    failed_engines+=("$engine")
+    rm -f "$output_file" "$error_file"
+    continue
+  fi
+
+  if [[ "$engine" = "claude" || "$engine" = "antigravity" ]]; then
+    if (cd "$repo_dir" && run_with_timeout "${command[@]}") >"$output_file" 2>"$error_file"; then run_status=0; else run_status=$?; fi
+  else
+    if (cd "$repo_dir" && run_with_timeout "${command[@]}") >/dev/null 2>"$error_file"; then run_status=0; else run_status=$?; fi
+  fi
+
+  if [[ "$run_status" -ne 0 || ! -s "$output_file" ]]; then
+    echo "REVIEWER=$engine MODEL=$model STATUS=UNAVAILABLE exit=$run_status"
+    failed_engines+=("$engine")
+  else
+    verdict=$(grep -Eo 'VERDICT:[[:space:]]*(APPROVE|REQUEST_CHANGES|NEEDS_DISCUSSION)' "$output_file" | tail -1 | sed -E 's/.*VERDICT:[[:space:]]*//') || true
+    if [[ -z "$verdict" ]]; then
+      echo "REVIEWER=$engine MODEL=$model STATUS=INVALID_VERDICT"
+      failed_engines+=("$engine")
+    else
+      echo "REVIEWER=$engine MODEL=$model VERDICT=$verdict"
+      [[ "$verdict" != "APPROVE" ]] && change_engines+=("$engine")
+    fi
+  fi
+
+  if [[ -n "$report_dir" ]]; then
+    cp "$output_file" "$report_dir/$engine.md"
+    cp "$error_file" "$report_dir/$engine.stderr.txt"
+  fi
+  rm -f "$output_file" "$error_file"
+done
+
+if [[ -n "$report_dir" ]]; then
+  {
+    echo "# Adversarial Review Summary"
+    echo
+    echo "- trigger: $trigger"
+    echo "- changed_files: ${#changed_files[@]}"
+    echo "- code_files: $code_files"
+    echo "- documentation_files: $doc_files"
+    echo "- changed_lines: $changed_lines"
+    echo "- engines: $(IFS=,; echo "${selected_engines[*]}")"
+  } > "$report_dir/summary.md"
+fi
+
+if [[ ${#failed_engines[@]} -gt 0 && ${#change_engines[@]} -gt 0 ]]; then
+  echo "REVIEW_STATUS=UNAVAILABLE_AND_CHANGES_REQUESTED unavailable=$(IFS=,; echo "${failed_engines[*]}") changes=$(IFS=,; echo "${change_engines[*]}")"
+  exit 4
+fi
+if [[ ${#failed_engines[@]} -gt 0 ]]; then
+  echo "REVIEW_STATUS=UNAVAILABLE reviewers=$(IFS=,; echo "${failed_engines[*]}")"
+  exit 4
+fi
+if [[ ${#change_engines[@]} -gt 0 ]]; then
+  echo "REVIEW_STATUS=CHANGES_REQUESTED reviewers=$(IFS=,; echo "${change_engines[*]}")"
+  exit 2
+fi
+echo "REVIEW_STATUS=APPROVED"

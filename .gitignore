@@ -1,0 +1,19 @@
+.DS_Store
+*.bak
+*.swp
+.idea/
+.vscode/
+
+# macOS metadata
+._*
+._.DS_Store
+._.git
+
+# Runtime directories
+.openclaw/
+
+# Case variants (Windows core.ignorecase)
+AGENTS.md
+BOOTSTRAP.md
+HEARTBEAT.md
+IDENTITY.md
