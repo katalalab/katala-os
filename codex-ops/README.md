@@ -1,6 +1,6 @@
 # Codex Ops
 
-This directory is the operating model for local Codex work on this Mac.
+This directory is the operating model for local Codex work on a primary workstation.
 
 The goal is not to fine-tune GPT locally. The goal is to make Codex behavior more repeatable by turning working practice into packages, policies, hooks, audits, and evals.
 

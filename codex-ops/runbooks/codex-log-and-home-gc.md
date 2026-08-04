@@ -4,7 +4,7 @@ Fleet-wide policy values and procedures for `~/.codex/` growth. Canonical here; 
 
 ## logs_2.sqlite retention
 
-- Soft cap: 250 MiB (ratified 2026-07-29). The former 100 MiB was unreachable — a busy day on gpu-node-a writes ~138 MiB of rows and retention only prunes rows older than one day, so one day always breached it.
+- Soft cap: 250 MiB (ratified 2026-07-29). The former 100 MiB was unreachable — a busy day on an active node writes ~138 MiB of rows and retention only prunes rows older than one day, so one day always breached it.
 - Row-level retention: `~/work/docs/scripts/codex-logs-retention.py --keep-days 1 --apply` (report-only without `--apply`; backs up with `quick_check`, deletes stale rows, reclaims with `incremental_vacuum`, keeps the newest 2 backups, yields when Codex holds the write lock). A full VACUUM cannot bring the file under the cap: the size is real rows.
 - Before VACUUM or rotation: copy `logs_2.sqlite`, `logs_2.sqlite-wal`, and `logs_2.sqlite-shm` to `~/.codex/log-maintenance-backups/<timestamp>/`.
 - Restore: stop Codex, copy backup files back to `~/.codex/`, restart Codex.
