@@ -37,6 +37,13 @@ scan 'real home path' \
   '(/Users/|/home/)[A-Za-z][A-Za-z0-9_-]{2,}' \
   '/Users/(youruser|me|secret|private|\$|<)|/home/(youruser|runner|\$|<)|/Users/\{|/home/\{'
 
+# Same class, Windows spelling: a drive letter in front and either slash kind.
+# The fleet runs Windows nodes, so C:\Users\<realname> is exactly the form a
+# Windows-side excerpt would carry ($env:USERPROFILE is the placeholder there).
+scan 'real home path (windows)' \
+  '[A-Za-z]:[\\/][Uu]sers[\\/][A-Za-z][A-Za-z0-9_-]{2,}' \
+  '[\\/][Uu]sers[\\/](youruser|me|secret|private|Public|\$|<|\{)'
+
 # Tailscale CGNAT range and RFC1918, excluding the documented placeholder. Full
 # dotted quads only: requiring four octets keeps version strings like 10.15.7
 # from tripping the gate in a docs-heavy tree.
@@ -44,13 +51,25 @@ scan 'private address' \
   '\b(100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])|10\.[0-9]{1,3}|192\.168|172\.(1[6-9]|2[0-9]|3[01]))\.[0-9]{1,3}\.[0-9]{1,3}\b' \
   '100\.100\.100\.'
 
-# High-confidence credential shapes.
+# Tailscale also assigns every node a ULA in fd7a:115c:a1e0::/48; the v6 form
+# identifies a tailnet node as precisely as the CGNAT v4 one.
+scan 'private address (tailscale ipv6)' \
+  'fd7a:115c:a1e0:[0-9a-f:]+' \
+  '' \
+  '-i'
+
+# High-confidence credential shapes. Keep in sync with SECRET_RE in
+# hooks/pre-commit — the commit-time and publish-time gates cover the same set.
 scan 'credential' \
   '(gho_|ghp_|ghs_|github_pat_)[A-Za-z0-9_]{20,}|sk-(ant|proj|live)-[A-Za-z0-9_-]{20,}|AIza[A-Za-z0-9_-]{30,}|xox[abpsr]-[A-Za-z0-9-]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----'
 
 # Employee/account identifier shape (letter + 5 digits) assigned to a user field.
+# Case-insensitive: the field name is prose ("Owner:", "USER=") and capitalization
+# varies, unlike token prefixes whose issued form is fixed.
 scan 'account identifier' \
-  '(owner|user|username|login|account)["'"'"':= ]+[A-Za-z][0-9]{5}\b'
+  '(owner|user|username|login|account)["'"'"':= ]+[A-Za-z][0-9]{5}\b' \
+  '' \
+  '-i'
 
 # Real inbound webhook endpoints.
 scan 'webhook endpoint' \
