@@ -1,3 +1,7 @@
+# Operating policy for humans and agents, applied through the runbooks in this
+# directory. No tool consumes this file, and it is NOT Codex config.toml syntax:
+# `approval` below is policy vocabulary, not Codex's `approval_policy` setting
+# (whose real values are documented in the Codex configuration reference).
 name: codex-ops-default-policy
 version: 0.1.0
 status: draft

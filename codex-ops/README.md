@@ -28,7 +28,7 @@ Codex Ops is organized like a lightweight Agent Package Manager plus local contr
 - `$HOME/work/docs/scripts/agent-reinforcement-feedback-ledger.py`: scored feedback ledger that turns measurements, GitHub discussion, agmsg status, Drive reachability, and Oracle dry-runs into reusable loop events.
 - `implementation-plan.md`: phased rollout plan.
 - `packages/local-codex-ops/manifest.yaml`: package manifest for the first local ops package.
-- `policies/default.yaml`: starter policy for local Codex operational work.
+- `policies/default.yaml`: starter policy for local Codex operational work. A human/agent-facing document, not Codex `config.toml` syntax — nothing parses it.
 - `scripts/backup-asset-index.sh`: metadata-only backup index generator.
 - `scripts/validate-learning-data.sh`: JSONL/YAML validator for agent learning data.
 - `retrospectives/`: backup, rollout, and incident reviews with repeat/avoid rules.
