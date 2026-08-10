@@ -40,6 +40,8 @@ Codex Ops is organized like a lightweight Agent Package Manager plus local contr
 - `evals/antipattern-cases.yaml`: machine-readable antipattern cases.
 - `evals/eval-cases.yaml`: regression eval definitions.
 
+`policies/default.yaml` is an operating-policy document interpreted by this repository's runbooks; it is not a Codex configuration file. For supported Codex settings and their TOML syntax, see the [official `config.toml` reference](https://developers.openai.com/codex/config-reference/).
+
 ## Practical Rule
 
 Use documentation for decision support, not ceremony. Add guardrails where a past failure would have been prevented:

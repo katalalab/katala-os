@@ -1,3 +1,5 @@
+# Operating policy for humans and agents; runbooks interpret this file.
+# This is not read by Codex and does not use Codex config.toml syntax.
 name: codex-ops-default-policy
 version: 0.1.0
 status: draft
