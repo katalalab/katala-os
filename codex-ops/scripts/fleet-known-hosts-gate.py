@@ -9,11 +9,10 @@ import ipaddress
 import json
 import os
 import re
-import selectors
 import stat
 import subprocess
 import sys
-import time
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional, Sequence
@@ -155,8 +154,25 @@ def close_process(proc):
     close_streams(proc)
 
 
+def drain_stream(stream, sink):
+    try:
+        while True:
+            chunk = stream.read(65_536)
+            if not chunk:
+                return
+            sink.extend(chunk)
+    except (OSError, ValueError):
+        return
+
+
 def run_bounded(argv: Sequence[str], timeout: int, output_cap=MAX_COMMAND_BYTES):
-    """Run an absolute trusted binary without a shell and retain bounded output only."""
+    """Run an absolute trusted binary without a shell and retain bounded output only.
+
+    Pipes are drained by threads: selectors cannot poll pipes on Windows, and this
+    gate runs on every fleet OS. The cap is checked after the streams close, so a
+    runaway command is bounded by the timeout rather than cut mid-stream — at
+    keyscan scale the difference does not matter.
+    """
     try:
         proc = subprocess.Popen(
             list(argv),
@@ -168,39 +184,24 @@ def run_bounded(argv: Sequence[str], timeout: int, output_cap=MAX_COMMAND_BYTES)
         )
     except OSError:
         return CommandResult("COMMAND_START_FAILED")
-    selector = None
     try:
-        selector = selectors.DefaultSelector()
         buffers = {"stdout": bytearray(), "stderr": bytearray()}
-        streams = {proc.stdout.fileno(): "stdout", proc.stderr.fileno(): "stderr"}
-        for descriptor in streams:
-            selector.register(descriptor, selectors.EVENT_READ)
-        deadline = time.monotonic() + timeout
-        while selector.get_map():
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                close_process(proc)
-                return CommandResult("COMMAND_TIMEOUT")
-            events = selector.select(min(remaining, 0.1))
-            for key, _ in events:
-                chunk = os.read(key.fd, min(65_536, output_cap + 1))
-                if not chunk:
-                    selector.unregister(key.fd)
-                    continue
-                name = streams[key.fd]
-                buffers[name].extend(chunk)
-                if len(buffers[name]) > output_cap:
-                    close_process(proc)
-                    return CommandResult("COMMAND_OUTPUT_LIMIT")
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            close_process(proc)
-            return CommandResult("COMMAND_TIMEOUT")
+        readers = []
+        for name, stream in (("stdout", proc.stdout), ("stderr", proc.stderr)):
+            thread = threading.Thread(target=drain_stream, args=(stream, buffers[name]), daemon=True)
+            thread.start()
+            readers.append(thread)
         try:
-            returncode = proc.wait(timeout=remaining)
+            returncode = proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             close_process(proc)
             return CommandResult("COMMAND_TIMEOUT")
+        # The child exiting closes the write ends; readers hit EOF right after.
+        for thread in readers:
+            thread.join(timeout=1.0)
+        if len(buffers["stdout"]) > output_cap or len(buffers["stderr"]) > output_cap:
+            close_process(proc)
+            return CommandResult("COMMAND_OUTPUT_LIMIT")
         if returncode != 0:
             return CommandResult(
                 "COMMAND_NONZERO",
@@ -214,12 +215,10 @@ def run_bounded(argv: Sequence[str], timeout: int, output_cap=MAX_COMMAND_BYTES)
             returncode,
             bytes(buffers["stderr"]),
         )
-    except (OSError, ValueError):
+    except (OSError, ValueError, RuntimeError):
         close_process(proc)
         return CommandResult("COMMAND_INTERNAL")
     finally:
-        if selector is not None:
-            selector.close()
         close_streams(proc)
 
 
