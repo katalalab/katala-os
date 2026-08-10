@@ -11,6 +11,7 @@
 
 # Runtime directories
 .openclaw/
+__pycache__/
 
 # Case variants (Windows core.ignorecase)
 AGENTS.md

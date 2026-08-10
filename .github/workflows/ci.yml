@@ -34,3 +34,42 @@ jobs:
       # rather than relying on review attention.
       - name: Reject real hostnames, addresses, home paths and secrets
         run: ./scripts/check-no-instance-data.sh
+      - name: Gate self-test (both-direction canaries)
+        run: ./scripts/test-check-no-instance-data.sh
+
+  tests:
+    name: tests (hooks + orchestration + gates)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Safety-valve behavior test
+        run: bash hooks/test-safety-valve.sh
+      - name: Orchestration dispatch tests
+        run: |
+          for t in orchestration/tests/test-*.sh; do
+            echo "== $t"
+            bash "$t"
+          done
+      - name: Python gate tests
+        run: |
+          python3 codex-ops/scripts/test-fleet-known-hosts-gate.py
+          python3 codex-ops/scripts/test-tailscaled-log-size-gate.py
+
+  # The known-hosts gate broke on Windows once (selectors cannot poll pipes
+  # there) while staying green on Linux, so the Python tests get a Windows leg.
+  tests-windows:
+    name: tests (windows python)
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Python gate tests
+        shell: bash
+        run: |
+          python codex-ops/scripts/test-fleet-known-hosts-gate.py
+          python codex-ops/scripts/test-tailscaled-log-size-gate.py

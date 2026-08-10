@@ -20,6 +20,9 @@ EOF
 for binary in cursor-agent opencode agy; do
   cat > "$tmp/fake-bin/$binary" <<'EOF'
 #!/usr/bin/env bash
+# agent-dispatch preflights cursor with `cursor-agent status`; answer it here so
+# the test stays hermetic on nodes (and CI) with no real engine logged in.
+if [[ "${1:-}" = status ]]; then printf 'logged in\n'; exit 0; fi
 printf '%s\n' "$@" > "$DISPATCH_ARGS_FILE"
 printf 'model answer\n'
 EOF
@@ -37,14 +40,21 @@ for backend in cursor opencode antigravity; do
       bash "$runner" "$backend" --dir "$tmp/work" --read-only -- 'check'
   )"
   [[ "$output" = 'model answer' ]]
+done
+
+# cursor and antigravity get no model option unless one is asked for; read-only
+# opencode intentionally pins the free default model (see agent-dispatch).
+for backend in cursor antigravity; do
   if grep -Eq '^(--model|-m)$' "$tmp/$backend-args"; then
     echo "unexpected model option for $backend" >&2
     exit 1
   fi
 done
+grep -qx -- '-m' "$tmp/opencode-args"
+grep -qx 'opencode-go/deepseek-v4-flash' "$tmp/opencode-args"
 
 grep -qx 'ask' "$tmp/cursor-args"
 grep -qx 'plan' "$tmp/opencode-args"
-grep -qx 'plan' "$tmp/agy-args"
+grep -qx 'plan' "$tmp/antigravity-args"
 
 echo 'agent-dispatch optional-argument tests: PASS'
