@@ -42,22 +42,25 @@ if (fs.existsSync(settingsPath)) {
 }
 
 settings.hooks = settings.hooks || {};
-settings.hooks.PreToolUse = settings.hooks.PreToolUse || [];
 
 const entry = {
-  matcher: 'Edit|Write',
+  matcher: 'Edit|Write|NotebookEdit',
   hooks: [{ type: 'command', command: nodeBin, args: [hookScript], timeout: 10, statusMessage: 'safety-valve' }],
 };
 
-const existing = settings.hooks.PreToolUse.find(isOurEntry);
-let action;
-if (existing) {
-  const idx = settings.hooks.PreToolUse.indexOf(existing);
-  settings.hooks.PreToolUse[idx] = entry;
-  action = 'updated (idempotent refresh)';
-} else {
-  settings.hooks.PreToolUse.push(entry);
-  action = 'added';
+// Both events, one script: PreToolUse warns the operator (systemMessage is
+// user-facing only), PostToolUse feeds the agent itself (additionalContext).
+const actions = {};
+for (const event of ['PreToolUse', 'PostToolUse']) {
+  const list = (settings.hooks[event] = settings.hooks[event] || []);
+  const existing = list.find(isOurEntry);
+  if (existing) {
+    list[list.indexOf(existing)] = entry;
+    actions[event] = 'updated (idempotent refresh)';
+  } else {
+    list.push(entry);
+    actions[event] = 'added';
+  }
 }
 
 fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf8');
@@ -65,11 +68,12 @@ fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf8')
 console.log(JSON.stringify({
   host: os.hostname(),
   platform: process.platform,
-  action,
+  actions,
   nodeBin,
   hookScript,
   hookScriptExists: fs.existsSync(hookScript),
   settingsPath,
   preToolUseCount: settings.hooks.PreToolUse.length,
+  postToolUseCount: settings.hooks.PostToolUse.length,
   settingsValid: true,
 }, null, 2));

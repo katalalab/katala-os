@@ -33,8 +33,9 @@ const settingsPath = path.join(settingsDir, 'settings.json');
 const hookDir = path.join(home, 'work', 'agent-context', 'hooks');
 
 const VALVES = [
-  { script: 'claude-safety-valve.js', installer: 'apply-safety-valve.js', label: 'edit' },
-  { script: 'claude-bash-safety-valve.js', installer: 'apply-bash-safety-valve.js', label: 'bash' },
+  // The edit valve is wired on both tool events (operator warning + agent nudge).
+  { script: 'claude-safety-valve.js', installer: 'apply-safety-valve.js', label: 'edit', events: ['PreToolUse', 'PostToolUse'] },
+  { script: 'claude-bash-safety-valve.js', installer: 'apply-bash-safety-valve.js', label: 'bash', events: ['PreToolUse'] },
 ];
 
 function report(obj, code) {
@@ -47,19 +48,16 @@ function readSettings() {
 }
 
 // Match the installer's own identity check (hook args ending in the script
-// name) rather than a substring of the serialized hook block.
+// name) rather than a substring of the serialized hook block. A valve counts as
+// installed only when it is present on every event it is supposed to cover.
 function missingValves(settings) {
-  const entries = (settings.hooks || {}).PreToolUse || [];
-  const installed = new Set();
-  for (const entry of entries) {
-    for (const hook of entry.hooks || []) {
-      for (const arg of hook.args || []) {
-        const base = String(arg).split(/[\\/]/).pop();
-        installed.add(base);
-      }
-    }
-  }
-  return VALVES.filter((v) => !installed.has(v.script)).map((v) => v.label);
+  const installedOn = (event, script) =>
+    (((settings.hooks || {})[event]) || []).some((entry) =>
+      (entry.hooks || []).some((hook) =>
+        (hook.args || []).some((arg) => String(arg).split(/[\\/]/).pop() === script)));
+  return VALVES
+    .filter((v) => !v.events.every((event) => installedOn(event, v.script)))
+    .map((v) => v.label);
 }
 
 if (!fs.existsSync(settingsPath)) report({ action: 'no-settings-file', path: settingsPath }, 1);
