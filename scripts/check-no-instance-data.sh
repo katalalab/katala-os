@@ -15,18 +15,30 @@ cd "$ROOT_DIR"
 fail=0
 SELF='scripts/check-no-instance-data.sh'
 
-# scan <label> <ere-pattern> [allowed-ere]
-# Matches tracked files only (git grep), skips binaries (-I), and drops lines
-# matching <allowed-ere> so documented placeholders do not trip the gate.
+# scan <label> <ere-pattern> [allowed-ere] [git-grep-flags] [allow-scope]
+# Matches tracked files only (git grep), skips binaries (-I), and drops hits that
+# <allowed-ere> covers so documented placeholders do not trip the gate.
+#
+# allow-scope picks what <allowed-ere> is tested against, and the two scans need
+# different answers. For a token class (an address, a home path) the allow-list means
+# "this token is the documented placeholder", so it has to be tested per match: -o
+# narrows each hit to the match itself, because testing the whole line let a real
+# leak ride along with any example sharing it — a sentence naming the placeholder
+# and a real node dropped the node too, and the gate said clean. For a sentence
+# class the allow-list means "this whole sentence is provenance, not a session
+# trace", and the allowing word routinely falls outside the matched window, so that
+# scan tests the line. It keeps the ride-along weakness, which is the accepted cost
+# of a heuristic that reads sentences rather than tokens.
 #
 # Spell word boundaries out as (^|[^0-9A-Za-z_]) rather than \b: git grep -E hands
 # the pattern to the platform regex engine, and \b is a GNU extension. On macOS and
 # BSD it matches nothing at all, so the pattern silently stops firing and the gate
 # reports clean — a false green in the one place that must not have one.
 scan() {
-  local label="$1" pattern="$2" allowed="${3:-}" flags="${4:-}"
-  local hits
-  hits="$(git grep -nIE $flags "$pattern" -- . ":!$SELF" 2>/dev/null || true)"
+  local label="$1" pattern="$2" allowed="${3:-}" flags="${4:-}" allow_scope="${5:-match}"
+  local hits only='-o'
+  if [ "$allow_scope" = 'line' ]; then only=''; fi
+  hits="$(git grep -nIE $only $flags "$pattern" -- . ":!$SELF" 2>/dev/null || true)"
   if [ -n "$allowed" ] && [ -n "$hits" ]; then
     hits="$(printf '%s\n' "$hits" | grep -vE "$allowed" || true)"
   fi
@@ -52,8 +64,15 @@ scan 'real home path (windows)' \
 # Tailscale CGNAT range and RFC1918, excluding the documented placeholder. Full
 # dotted quads only: requiring four octets keeps version strings like 10.15.7
 # from tripping the gate in a docs-heavy tree.
+#
+# Trailing boundary only, deliberately. A leading (^|[^0-9A-Za-z_]) consumes the
+# character in front of the match, so with -o the placeholder in
+# "100.100.100.10 <real address>" ate the space the real address needed and the
+# real one was never extracted — the allow-list then removed the placeholder and
+# the gate said clean. The trailing boundary alone still rejects an address buried
+# in a longer token, and erring toward catching is the right direction here.
 scan 'private address' \
-  '(^|[^0-9A-Za-z_])(100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])|10\.[0-9]{1,3}|192\.168|172\.(1[6-9]|2[0-9]|3[01]))\.[0-9]{1,3}\.[0-9]{1,3}([^0-9A-Za-z_]|$)' \
+  '(100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])|10\.[0-9]{1,3}|192\.168|172\.(1[6-9]|2[0-9]|3[01]))\.[0-9]{1,3}\.[0-9]{1,3}([^0-9A-Za-z_]|$)' \
   '100\.100\.100\.'
 
 # Tailscale also assigns every node a ULA in fd7a:115c:a1e0::/48; the v6 form
@@ -88,7 +107,8 @@ scan 'webhook endpoint' \
 scan 'dated observation' \
   '(observ|measur|identif|benchmark|audit|detect|notic|reproduc|encounter)[a-z]*.{0,80}[0-9]{4}-[0-9]{2}-[0-9]{2}|[0-9]{4}-[0-9]{2}-[0-9]{2}.{0,80}(observ|measur|identif|benchmark|audit|detect|notic|reproduc|encounter)[a-z]*' \
   '(ratified|retrieved|generated|published)' \
-  '-i'
+  '-i' \
+  'line'
 
 # Host inventories must stay out of the published tree; ship a .example instead.
 inventory="$(git ls-files | grep -E '(^|/)(fleet-hosts\.tsv|fleet-env-manifest\.json)$' || true)"

@@ -74,6 +74,15 @@ expect 1 'host inventory file'    fleet-hosts.tsv "name,role"
 # the boundary is dropped or its character class stops covering the underscore.
 expect 1 'address alone on line'  canary.md "$rfc"
 
+# Prose names the placeholder and the real thing in one breath, so the allow-list
+# has to be applied per match. These fail if it goes back to dropping whole lines.
+expect 1 'leak beside placeholder' canary.md "example net 100.100.100.10 and node $cg"
+expect 1 'leak beside placeholder home' canary.md "docs at /Users/youruser/work plus /Users/$u/work"
+# Adjacent, one separator between them: a leading boundary group would consume that
+# separator for the placeholder and leave the real address unmatchable.
+expect 1 'leak abutting placeholder' canary.md "100.100.100.10 $cg"
+expect 1 'leak abutting placeholder comma' canary.md "100.100.100.10,$cg"
+
 # --- must pass (documented placeholders and provenance) ---------------------
 expect 0 'placeholder macos home' canary.md "docs at /Users/youruser/work"
 expect 0 'placeholder win home'   canary.md "docs at C:\\Users\\youruser\\work"
@@ -83,6 +92,10 @@ expect 0 'version string'         canary.md "requires macOS 10.15.7 or newer"
 expect 0 'address inside a token' canary.md "artifact${rfc}build"
 expect 0 'identifier word suffix' canary.md "owner: ${idv}_secret"
 expect 0 'provenance dating'      canary.md "$avb checklist published 2026-01-15"
+# Same sentence, date first. The match window then ends at the verb and never
+# reaches the allowing word, so this fails the moment that scan starts testing
+# the allow-list against the match instead of the line.
+expect 0 'provenance dating rev'  canary.md "2026-01-15 $avb checklist published"
 expect 0 'retrieval dating'       canary.md "retrieved 2026-01-15 from vendor docs"
 
 printf 'gate self-test: %d passed, %d failed\n' "$pass" "$fail"
