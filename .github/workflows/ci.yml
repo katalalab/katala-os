@@ -37,6 +37,25 @@ jobs:
       - name: Gate self-test (both-direction canaries)
         run: ./scripts/test-check-no-instance-data.sh
 
+  # The gate is regexes handed to whatever engine the platform ships, and the
+  # platforms disagree: \b matched nothing under BSD git grep while staying green
+  # on Linux, so every macOS run of the gate reported clean regardless of the tree.
+  # Only a macOS leg sees that class. Kept a separate job rather than a matrix leg
+  # on the one above, because branch protection requires the context name
+  # "no instance data" verbatim and a matrix would rename it out of existence.
+  no-instance-data-macos:
+    name: no instance data (macos)
+    runs-on: macos-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Reject real hostnames, addresses, home paths and secrets
+        run: ./scripts/check-no-instance-data.sh
+      - name: Gate self-test (both-direction canaries)
+        run: ./scripts/test-check-no-instance-data.sh
+
   tests:
     name: tests (hooks + orchestration + gates)
     runs-on: ubuntu-latest
