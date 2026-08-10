@@ -24,8 +24,10 @@ if [ -n "$BAD_FILES" ]; then
   FAIL=1
 fi
 
-# 2. Block high-confidence secret patterns in staged content.
-SECRET_RE='(sk-(ant|proj|live)-[A-Za-z0-9_-]{20,}|AIza[A-Za-z0-9_-]{30,}|ghp_[A-Za-z0-9]{30,}|gho_[A-Za-z0-9]{30,}|xox[abp]-[A-Za-z0-9-]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----)'
+# 2. Block high-confidence secret patterns in staged content. Keep in sync with
+#    the 'credential' scan in scripts/check-no-instance-data.sh — the commit-time
+#    and publish-time gates cover the same set.
+SECRET_RE='(sk-(ant|proj|live)-[A-Za-z0-9_-]{20,}|AIza[A-Za-z0-9_-]{30,}|(gho_|ghp_|ghs_|github_pat_)[A-Za-z0-9_]{20,}|xox[abpsr]-[A-Za-z0-9-]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----)'
 SECRET_HITS=$(git diff --cached --no-color -U0 | grep -E "$SECRET_RE" || true)
 if [ -n "$SECRET_HITS" ]; then
   echo "pre-commit: blocked likely secret in staged content (regex match):" >&2
