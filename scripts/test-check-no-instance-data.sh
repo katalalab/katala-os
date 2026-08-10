@@ -68,12 +68,20 @@ expect 1 'dated narrative caps'   canary.md "${vb^}ed the regression on 2026-01-
 expect 1 'slack webhook'          canary.md "post to https://$wh"
 expect 1 'host inventory file'    fleet-hosts.tsv "name,role"
 
+# Every canary above sits inside a sentence, so the spaces around it satisfy any
+# boundary condition — including none at all. These three pin the boundary itself:
+# a bare address exercises the ^ and $ alternatives, and the two negatives fail if
+# the boundary is dropped or its character class stops covering the underscore.
+expect 1 'address alone on line'  canary.md "$rfc"
+
 # --- must pass (documented placeholders and provenance) ---------------------
 expect 0 'placeholder macos home' canary.md "docs at /Users/youruser/work"
 expect 0 'placeholder win home'   canary.md "docs at C:\\Users\\youruser\\work"
 expect 0 'ci runner home'         canary.md "ci path /home/runner/work"
 expect 0 'placeholder address'    canary.md "example net 100.100.100.10"
 expect 0 'version string'         canary.md "requires macOS 10.15.7 or newer"
+expect 0 'address inside a token' canary.md "artifact${rfc}build"
+expect 0 'identifier word suffix' canary.md "owner: ${idv}_secret"
 expect 0 'provenance dating'      canary.md "$avb checklist published 2026-01-15"
 expect 0 'retrieval dating'       canary.md "retrieved 2026-01-15 from vendor docs"
 

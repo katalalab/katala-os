@@ -18,6 +18,11 @@ SELF='scripts/check-no-instance-data.sh'
 # scan <label> <ere-pattern> [allowed-ere]
 # Matches tracked files only (git grep), skips binaries (-I), and drops lines
 # matching <allowed-ere> so documented placeholders do not trip the gate.
+#
+# Spell word boundaries out as (^|[^0-9A-Za-z_]) rather than \b: git grep -E hands
+# the pattern to the platform regex engine, and \b is a GNU extension. On macOS and
+# BSD it matches nothing at all, so the pattern silently stops firing and the gate
+# reports clean — a false green in the one place that must not have one.
 scan() {
   local label="$1" pattern="$2" allowed="${3:-}" flags="${4:-}"
   local hits
@@ -48,7 +53,7 @@ scan 'real home path (windows)' \
 # dotted quads only: requiring four octets keeps version strings like 10.15.7
 # from tripping the gate in a docs-heavy tree.
 scan 'private address' \
-  '\b(100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])|10\.[0-9]{1,3}|192\.168|172\.(1[6-9]|2[0-9]|3[01]))\.[0-9]{1,3}\.[0-9]{1,3}\b' \
+  '(^|[^0-9A-Za-z_])(100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])|10\.[0-9]{1,3}|192\.168|172\.(1[6-9]|2[0-9]|3[01]))\.[0-9]{1,3}\.[0-9]{1,3}([^0-9A-Za-z_]|$)' \
   '100\.100\.100\.'
 
 # Tailscale also assigns every node a ULA in fd7a:115c:a1e0::/48; the v6 form
@@ -67,7 +72,7 @@ scan 'credential' \
 # Case-insensitive: the field name is prose ("Owner:", "USER=") and capitalization
 # varies, unlike token prefixes whose issued form is fixed.
 scan 'account identifier' \
-  '(owner|user|username|login|account)["'"'"':= ]+[A-Za-z][0-9]{5}\b' \
+  '(owner|user|username|login|account)["'"'"':= ]+[A-Za-z][0-9]{5}([^0-9A-Za-z_]|$)' \
   '' \
   '-i'
 
