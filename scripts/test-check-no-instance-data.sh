@@ -98,5 +98,19 @@ expect 0 'provenance dating'      canary.md "$avb checklist published 2026-01-15
 expect 0 'provenance dating rev'  canary.md "2026-01-15 $avb checklist published"
 expect 0 'retrieval dating'       canary.md "retrieved 2026-01-15 from vendor docs"
 
+# --- the gate must not report clean when it could not read the tree -----------
+# Running it outside a repository is the cheapest way to make git grep fail for
+# real (exit 128) rather than simply find nothing.
+NOREPO="$(mktemp -d)"
+mkdir -p "$NOREPO/scripts"
+cp "$GATE" "$NOREPO/scripts/"
+if "$NOREPO/scripts/check-no-instance-data.sh" >/dev/null 2>&1; then
+  fail=$((fail+1))
+  printf 'FAIL %-28s reported success with no repository to scan\n' 'scan failure is loud' >&2
+else
+  pass=$((pass+1))
+fi
+rm -rf "$NOREPO"
+
 printf 'gate self-test: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

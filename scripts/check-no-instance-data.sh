@@ -36,9 +36,17 @@ SELF='scripts/check-no-instance-data.sh'
 # reports clean — a false green in the one place that must not have one.
 scan() {
   local label="$1" pattern="$2" allowed="${3:-}" flags="${4:-}" allow_scope="${5:-match}"
-  local hits only='-o'
+  local hits rc=0 only='-o'
   if [ "$allow_scope" = 'line' ]; then only=''; fi
-  hits="$(git grep -nIE $only $flags "$pattern" -- . ":!$SELF" 2>/dev/null || true)"
+  # git grep exits 1 for "no match" and 2+ for "could not run" — an unreadable
+  # object, a bad pathspec, no repository at all. Discarding stderr and treating
+  # every non-zero the same made those report as nothing to see, which is this
+  # gate promising a clean tree it never managed to read.
+  hits="$(git grep -nIE $only $flags "$pattern" -- . ":!$SELF")" || rc=$?
+  if [ "$rc" -gt 1 ]; then
+    printf '\ncheck-no-instance-data: [%s] scan could not run (git grep exit %s). Refusing to report clean.\n' "$label" "$rc" >&2
+    exit 2
+  fi
   if [ -n "$allowed" ] && [ -n "$hits" ]; then
     hits="$(printf '%s\n' "$hits" | grep -vE "$allowed" || true)"
   fi
@@ -111,7 +119,14 @@ scan 'dated observation' \
   'line'
 
 # Host inventories must stay out of the published tree; ship a .example instead.
-inventory="$(git ls-files | grep -E '(^|/)(fleet-hosts\.tsv|fleet-env-manifest\.json)$' || true)"
+# Listed separately from the filter for the same reason the scans check their exit
+# status: piping straight into grep and closing with || true would let a failed
+# listing read as an empty tree.
+tracked="$(git ls-files)" || {
+  printf '\ncheck-no-instance-data: [host inventory] listing could not run (git ls-files exit %s). Refusing to report clean.\n' "$?" >&2
+  exit 2
+}
+inventory="$(printf '%s\n' "$tracked" | grep -E '(^|/)(fleet-hosts\.tsv|fleet-env-manifest\.json)$' || true)"
 if [ -n "$inventory" ]; then
   fail=1
   printf '\n[host inventory]\n%s\n' "$inventory" >&2
