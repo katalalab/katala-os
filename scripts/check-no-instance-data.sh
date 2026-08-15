@@ -61,7 +61,7 @@ fi
 # BSD it matches nothing at all, so the pattern silently stops firing and the gate
 # reports clean — a false green in the one place that must not have one.
 scan() {
-  local label="$1" pattern="$2" allowed="${3:-}" flags="${4:-}" allow_scope="${5:-match}"
+  local label="$1" pattern="$2" allowed="${3:-}" flags="${4:-}" allow_scope="${5:-match}" redact="${6:-1}"
   local hits rc=0 only='-o' extra
   if [ "$allow_scope" = 'line' ]; then only=''; fi
   extra="$(repo_allow "$label")"
@@ -80,6 +80,14 @@ scan() {
   fi
   if [ -n "$hits" ]; then
     fail=1
+    # Print where, not what. On a public repository the Actions log is public, so
+    # echoing the matched text means a failing run republishes the very string the
+    # gate exists to keep out — and does it somewhere with no history to rewrite.
+    # The location plus the scan name is enough to find it locally; the classes
+    # that carry no identifier stay readable so the diagnosis is not guesswork.
+    if [ "$redact" = 1 ]; then
+      hits="$(printf '%s\n' "$hits" | sed -E 's/^([^:]*:[0-9]+:).*/\1<redacted — run the gate locally to see it>/')"
+    fi
     printf '\n[%s]\n%s\n' "$label" "$hits" >&2
   fi
 }
@@ -144,7 +152,8 @@ scan 'dated observation' \
   '(observ|measur|identif|benchmark|audit|detect|notic|reproduc|encounter)[a-z]*.{0,80}[0-9]{4}-[0-9]{2}-[0-9]{2}|[0-9]{4}-[0-9]{2}-[0-9]{2}.{0,80}(observ|measur|identif|benchmark|audit|detect|notic|reproduc|encounter)[a-z]*' \
   '(ratified|retrieved|generated|published)' \
   '-i' \
-  'line'
+  'line' \
+  0
 
 # Host inventories must stay out of the published tree; ship a .example instead.
 # Listed separately from the filter for the same reason the scans check their exit

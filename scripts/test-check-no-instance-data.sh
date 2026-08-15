@@ -100,6 +100,46 @@ expect 0 'provenance dating'      canary.md "$avb checklist published 2026-01-15
 expect 0 'provenance dating rev'  canary.md "2026-01-15 $avb checklist published"
 expect 0 'retrieval dating'       canary.md "retrieved 2026-01-15 from vendor docs"
 
+# --- the report must not republish what it caught -----------------------------
+# A public repository's Actions log is public. Printing the matched text there
+# hands the leak to a second place, one with no history to rewrite, every time
+# the gate does its job. Location and scan name are what a developer needs.
+report() {
+  local want="$1" label="$2" file="$3" line="$4" out
+  printf '%s\n' "$line" > "$file"
+  git add "$file"
+  out="$(./scripts/check-no-instance-data.sh 2>&1 || true)"
+  if printf '%s' "$out" | grep -qF -- "$want"; then
+    pass=$((pass+1))
+  else
+    fail=$((fail+1))
+    printf 'FAIL %-28s report did not contain %s\n' "$label" "$want" >&2
+  fi
+  git rm -q --cached "$file"; rm -f "$file"
+}
+notreport() {
+  local forbidden="$1" label="$2" file="$3" line="$4" out
+  printf '%s\n' "$line" > "$file"
+  git add "$file"
+  out="$(./scripts/check-no-instance-data.sh 2>&1 || true)"
+  if printf '%s' "$out" | grep -qF -- "$forbidden"; then
+    fail=$((fail+1))
+    printf 'FAIL %-28s report republished %s\n' "$label" "$forbidden" >&2
+  else
+    pass=$((pass+1))
+  fi
+  git rm -q --cached "$file"; rm -f "$file"
+}
+
+notreport "$u"        'home path not echoed'   canary.md "docs at /Users/$u/work"
+report    'canary.md' 'home path location kept' canary.md "docs at /Users/$u/work"
+notreport "$cg"       'address not echoed'     canary.md "node reachable at $cg today"
+notreport "$ghp"      'token not echoed'       canary.md "token $ghp"
+notreport "$idv"      'identifier not echoed'  canary.md "owner: $idv"
+# The dated-observation class carries no identifier, and masking it would leave a
+# developer guessing which sentence tripped a heuristic. It stays readable.
+report 'regression'   'dated line stays readable' canary.md "${vb}ed the regression on 2026-01-15"
+
 # --- repo-local exemptions ---------------------------------------------------
 # An exemption has to cover exactly what it names and nothing else. The dangerous
 # version is one that widens past its own scan class, so each case below pairs the
