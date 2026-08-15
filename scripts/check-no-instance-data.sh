@@ -14,6 +14,32 @@ cd "$ROOT_DIR"
 
 fail=0
 SELF='scripts/check-no-instance-data.sh'
+ALLOW_FILE='.instance-data-allow'
+
+# Repositories whose subject matter *is* the thing a scan looks for need a way to
+# say so. A tool that implements tailnet addressing has to name the CGNAT block;
+# refusing it leaves the choice between a false red and no gate at all, and a gate
+# that gets switched off protects nothing.
+#
+# Format, one per line: "<scan label>: <ERE>". The exemption applies to that scan
+# only, so excusing a range cannot also excuse a home path. The file is tracked, so
+# every exemption arrives through a diff someone reads, and the gate prints the ones
+# it honoured — an allowance that widens quietly is the failure mode to avoid.
+# Most labels have no exemption, and grep exits 1 on no match. Under pipefail that
+# made the whole pipeline fail, and set -e then killed the gate at the first such
+# scan — before any output. Swallow the empty case explicitly.
+repo_allow() {
+  local label="$1"
+  [ -f "$ALLOW_FILE" ] || return 0
+  { sed -n "s/^${label}:[[:space:]]*//p" "$ALLOW_FILE" || true; } \
+    | { grep -v '^[[:space:]]*$' || true; } \
+    | paste -sd '|' -
+}
+
+if [ -f "$ALLOW_FILE" ]; then
+  printf 'check-no-instance-data: honouring %s exemption(s) from %s\n' \
+    "$(grep -cvE '^[[:space:]]*(#|$)' "$ALLOW_FILE" || true)" "$ALLOW_FILE"
+fi
 
 # scan <label> <ere-pattern> [allowed-ere] [git-grep-flags] [allow-scope]
 # Matches tracked files only (git grep), skips binaries (-I), and drops hits that
@@ -36,8 +62,10 @@ SELF='scripts/check-no-instance-data.sh'
 # reports clean — a false green in the one place that must not have one.
 scan() {
   local label="$1" pattern="$2" allowed="${3:-}" flags="${4:-}" allow_scope="${5:-match}"
-  local hits rc=0 only='-o'
+  local hits rc=0 only='-o' extra
   if [ "$allow_scope" = 'line' ]; then only=''; fi
+  extra="$(repo_allow "$label")"
+  if [ -n "$extra" ]; then allowed="${allowed:+$allowed|}$extra"; fi
   # git grep exits 1 for "no match" and 2+ for "could not run" — an unreadable
   # object, a bad pathspec, no repository at all. Discarding stderr and treating
   # every non-zero the same made those report as nothing to see, which is this

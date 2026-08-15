@@ -48,7 +48,9 @@ rfc="192.16""8.1.50"
 ula="fd7a:115c:""a1e0:ab12::1"
 idv="k123""45"
 vb="obs""erv"
+rvb="repro""duc"
 avb="au""dit"
+cidr="100.""64.0.0/"
 wh="hooks.slack.com""/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
 
 # --- must be caught ---------------------------------------------------------
@@ -97,6 +99,35 @@ expect 0 'provenance dating'      canary.md "$avb checklist published 2026-01-15
 # the allow-list against the match instead of the line.
 expect 0 'provenance dating rev'  canary.md "2026-01-15 $avb checklist published"
 expect 0 'retrieval dating'       canary.md "retrieved 2026-01-15 from vendor docs"
+
+# --- repo-local exemptions ---------------------------------------------------
+# An exemption has to cover exactly what it names and nothing else. The dangerous
+# version is one that widens past its own scan class, so each case below pairs the
+# thing being excused with a leak that must still be caught while it is in effect.
+exempt() {
+  printf '%s\n' "$@" > .instance-data-allow
+  git add .instance-data-allow
+}
+unexempt() { git rm -q --cached .instance-data-allow; rm -f .instance-data-allow; }
+
+exempt 'private address: 100\.64\.0\.0/'
+expect 0 'exempted cidr block'    canary.md "CGNAT is ${cidr}10"
+# Same scan, a different value: excusing the block must not excuse a node inside it.
+expect 1 'exemption is not blanket' canary.md "node reachable at $cg today"
+# Different scan: the exemption names 'private address', so a home path is untouched.
+expect 1 'exemption stays in class' canary.md "docs at /Users/$u/work"
+unexempt
+
+exempt 'dated observation: ROADMAP'
+expect 0 'exempted dated line'     canary.md "ROADMAP row ${rvb}ible in CI, done 2026-08-01"
+expect 1 'same line unexempted later' canary.md "plain row ${rvb}ible in CI, done 2026-08-01"
+expect 1 'other dated line still caught' canary.md "${vb}ed the regression on 2026-01-15"
+unexempt
+
+# A comment-only file must not be read as an exemption of everything.
+exempt '# nothing exempted here'
+expect 1 'comments exempt nothing' canary.md "lan host $rfc"
+unexempt
 
 # --- the gate must not report clean when it could not read the tree -----------
 # Running it outside a repository is the cheapest way to make git grep fail for
