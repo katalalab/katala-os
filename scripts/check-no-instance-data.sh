@@ -128,8 +128,15 @@ scan 'private address (tailscale ipv6)' \
 
 # High-confidence credential shapes. Keep in sync with SECRET_RE in
 # hooks/pre-commit — the commit-time and publish-time gates cover the same set.
+# test-check-no-instance-data.sh asserts the two are identical rather than trusting
+# this comment; the classes below were added from one file first and the drift would
+# otherwise be invisible until the wrong gate was the only one that fired.
+#
+# The classes here are the ones this fleet can actually issue. Stripe, Twilio and
+# SendGrid shapes are deliberately absent — carrying patterns for credentials nobody
+# here holds buys nothing and makes the set look more complete than it is.
 scan 'credential' \
-  '(gho_|ghp_|ghs_|github_pat_)[A-Za-z0-9_]{20,}|sk-(ant|proj|live)-[A-Za-z0-9_-]{20,}|AIza[A-Za-z0-9_-]{30,}|xox[abpsr]-[A-Za-z0-9-]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----'
+  '(gho_|ghp_|ghr_|ghs_|github_pat_)[A-Za-z0-9_]{20,}|sk-(ant|proj|live)-[A-Za-z0-9_-]{20,}|AIza[A-Za-z0-9_-]{30,}|xox[abpsr]-[A-Za-z0-9-]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|npm_[A-Za-z0-9]{36}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|[MN][A-Za-z0-9_-]{23,}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27,}|discord(app)?\.com/api/webhooks/[0-9]+/[A-Za-z0-9_-]{20,}|hooks\.slack\.com/services/[A-Za-z0-9]+/[A-Za-z0-9]+/[A-Za-z0-9]{20,}|(mongodb(\+srv)?|postgres(ql)?|mysql|redis|amqp|mssql)://[^:/@[:space:]]+:[^@[:space:]]+@|aws_secret_access_key[[:space:]]*[:=][[:space:]]*.?[A-Za-z0-9/+=]{40}|"type"[[:space:]]*:[[:space:]]*"service_account"'
 
 # Employee/account identifier shape (letter + 5 digits) assigned to a user field.
 # Case-insensitive: the field name is prose ("Owner:", "USER=") and capitalization

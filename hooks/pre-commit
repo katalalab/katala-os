@@ -27,11 +27,14 @@ fi
 # 2. Block high-confidence secret patterns in staged content. Keep in sync with
 #    the 'credential' scan in scripts/check-no-instance-data.sh — the commit-time
 #    and publish-time gates cover the same set.
-SECRET_RE='(sk-(ant|proj|live)-[A-Za-z0-9_-]{20,}|AIza[A-Za-z0-9_-]{30,}|(gho_|ghp_|ghs_|github_pat_)[A-Za-z0-9_]{20,}|xox[abpsr]-[A-Za-z0-9-]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----)'
-SECRET_HITS=$(git diff --cached --no-color -U0 | grep -E "$SECRET_RE" || true)
-if [ -n "$SECRET_HITS" ]; then
-  echo "pre-commit: blocked likely secret in staged content (regex match):" >&2
-  echo "$SECRET_HITS" | head -3 >&2
+SECRET_RE='(sk-(ant|proj|live)-[A-Za-z0-9_-]{20,}|AIza[A-Za-z0-9_-]{30,}|(gho_|ghp_|ghr_|ghs_|github_pat_)[A-Za-z0-9_]{20,}|xox[abpsr]-[A-Za-z0-9-]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|npm_[A-Za-z0-9]{36}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|[MN][A-Za-z0-9_-]{23,}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27,}|discord(app)?\.com/api/webhooks/[0-9]+/[A-Za-z0-9_-]{20,}|hooks\.slack\.com/services/[A-Za-z0-9]+/[A-Za-z0-9]+/[A-Za-z0-9]{20,}|(mongodb(\+srv)?|postgres(ql)?|mysql|redis|amqp|mssql)://[^:/@[:space:]]+:[^@[:space:]]+@|aws_secret_access_key[[:space:]]*[:=][[:space:]]*.?[A-Za-z0-9/+=]{40}|"type"[[:space:]]*:[[:space:]]*"service_account")'
+SECRET_HITS=$(git diff --cached --no-color -U0 | grep -cE "$SECRET_RE" || true)
+if [ "${SECRET_HITS:-0}" -gt 0 ]; then
+  # Count, not content. Echoing the match puts the secret in terminal scrollback and
+  # in whatever session log the agent driving the commit is writing — a second copy
+  # in a place nobody thinks to clean.
+  echo "pre-commit: blocked $SECRET_HITS likely secret(s) in staged content." >&2
+  echo "  -> Find them with: git diff --cached | grep -nE \"\$SECRET_RE\"  (see this hook for the pattern)" >&2
   echo "  -> Move the secret to 1Password (op://...) and reference it at runtime." >&2
   FAIL=1
 fi

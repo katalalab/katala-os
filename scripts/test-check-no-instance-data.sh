@@ -100,6 +100,48 @@ expect 0 'provenance dating'      canary.md "$avb checklist published 2026-01-15
 expect 0 'provenance dating rev'  canary.md "2026-01-15 $avb checklist published"
 expect 0 'retrieval dating'       canary.md "retrieved 2026-01-15 from vendor docs"
 
+# --- credential classes this fleet can actually issue -------------------------
+# Added after reading github/awesome-copilot's secrets-scanner. Only the shapes
+# something here can hand out: the Discord bot tokens and webhook in the agents
+# vault, npm and JWT from the node and auth paths, database URIs because psql is a
+# preferred CLI, and the GCP service-account marker because the fleet holds several.
+ghr="ghr_""aaaaBBBBccccDDDDeeee1234"
+npmt="npm_""aaaaBBBBccccDDDDeeeeFFFFgggg1234hhhh"
+jwt="eyJ""hbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dQw4w9WgXcQ1234567890x"
+dbot="MTA""xNzI4OTk5OTk5OTk5OTk5OQ.GaBcDe.f1234567890abcdefghijklmnopqrstuvw"
+dhook="discord.com""/api/webhooks/1234567890123456789/aBcDeFgHiJkLmNoPqRsTuVwXyZ012345"
+dburi="postgres""ql://svcuser:hunter2hunter2@db.internal:5432/app"
+gcpsa='"type"'": "'"service_account"'
+awssec="aws_secret_access_key"" = wJalrXUtnFEMIK7MDENGbPxRfiCYEXAMPLEKEYabcd"
+
+expect 1 'github refresh token'   canary.md "token $ghr"
+expect 1 'npm token'              canary.md "//registry.npmjs.org/:_authToken=$npmt"
+expect 1 'jwt'                    canary.md "session $jwt"
+expect 1 'discord bot token'      canary.md "bot $dbot"
+expect 1 'discord webhook'        canary.md "post to https://$dhook"
+expect 1 'database uri with creds' canary.md "DATABASE_URL=$dburi"
+expect 1 'gcp service account'    canary.json "{$gcpsa}"
+expect 1 'aws secret assignment'  canary.md "$awssec"
+
+# A URI without credentials is a hostname, not a secret, and docs are full of them.
+expect 0 'database uri no creds'  canary.md "connect to postgresql://localhost:5432/app"
+expect 0 'jwt-ish short string'   canary.md "prefix eyJshort.eyJshort.sig"
+
+# --- the two gates must cover the same set ------------------------------------
+# The sync between hooks/pre-commit and the credential scan is stated in a comment
+# in both files. A comment does not fail when someone adds a class to one of them,
+# and the gate that still fires would hide the one that no longer does.
+gate_re="$(sed -n "s/^  '\(.*\)'\$/\1/p" "$ROOT_DIR/scripts/check-no-instance-data.sh" | grep -F 'AKIA[0-9A-Z]{16}' | head -1)"
+hook_re="$(sed -n "s/^SECRET_RE='(\(.*\))'\$/\1/p" "$ROOT_DIR/hooks/pre-commit")"
+norm() { printf '%s\n' "$1" | tr '|' '\n' | sed 's/^(//;s/)$//' | sort -u; }
+if [ -n "$gate_re" ] && [ -n "$hook_re" ] && [ -z "$(comm -3 <(norm "$gate_re") <(norm "$hook_re"))" ]; then
+  pass=$((pass+1))
+else
+  fail=$((fail+1))
+  printf 'FAIL %-28s credential classes differ between the gate and hooks/pre-commit\n' 'gates in sync' >&2
+  comm -3 <(norm "$gate_re") <(norm "$hook_re") >&2
+fi
+
 # --- the report must not republish what it caught -----------------------------
 # A public repository's Actions log is public. Printing the matched text there
 # hands the leak to a second place, one with no history to rewrite, every time
