@@ -20,7 +20,7 @@ cd "$WORK/repo"
 git init -q
 git add scripts/check-no-instance-data.sh
 
-pass=0 fail=0
+pass=0 fail=0 skip=0
 
 # expect <0|1> <label> <filename> <line> — stage one canary file, run the gate,
 # compare exit codes, unstage.
@@ -127,12 +127,57 @@ expect 1 'aws secret assignment'  canary.md "$awssec"
 expect 0 'database uri no creds'  canary.md "connect to postgresql://localhost:5432/app"
 expect 0 'jwt-ish short string'   canary.md "prefix eyJshort.eyJshort.sig"
 
+# --- binaries are not a blind spot -------------------------------------------
+# git grep -I refuses to read them, so every scan above was blind to a token sitting
+# in a committed PNG — a screenshot of a terminal is exactly that. The sweep pulls the
+# printable runs out and puts them through the credential scan.
+printf 'PNG\r\n\032\n\000\000%s\000' "$ghp" > canary.png
+git add canary.png
+binrc=0; ./scripts/check-no-instance-data.sh >/dev/null 2>&1 || binrc=$?
+if [ "$binrc" -eq 1 ]; then pass=$((pass+1)); else
+  fail=$((fail+1)); printf 'FAIL %-28s token in a binary was not caught (exit %s)
+' 'credential in binary' "$binrc" >&2
+fi
+git rm -q --cached canary.png; rm -f canary.png
+
+# A binary with nothing in it must not become a permanent red.
+printf 'PNG\r\n\032\n\000\000harmless pixels\000' > canary.png
+git add canary.png
+binrc=0; ./scripts/check-no-instance-data.sh >/dev/null 2>&1 || binrc=$?
+if [ "$binrc" -eq 0 ]; then pass=$((pass+1)); else
+  fail=$((fail+1)); printf 'FAIL %-28s clean binary was rejected (exit %s)
+' 'clean binary passes' "$binrc" >&2
+fi
+git rm -q --cached canary.png; rm -f canary.png
+
+# --- an exemption must not switch a scan off ---------------------------------
+# "credential: ghp_[A-Za-z0-9_]{20,}" removed the whole GitHub-token class and a real
+# token then passed while the gate printed "honouring 1 exemption" and reported clean.
+printf 'credential: ghp_[A-Za-z0-9_]{20,}
+' > .instance-data-allow
+printf 'token %s
+' "$ghp" > canary.md
+git add .instance-data-allow canary.md
+exrc=0; ./scripts/check-no-instance-data.sh >/dev/null 2>&1 || exrc=$?
+if [ "$exrc" -eq 2 ]; then pass=$((pass+1)); else
+  fail=$((fail+1)); printf 'FAIL %-28s class-wide exemption was accepted (exit %s)
+' 'exemption not blanket' "$exrc" >&2
+fi
+git rm -q --cached .instance-data-allow canary.md; rm -f .instance-data-allow canary.md
+
 # --- the two gates must cover the same set ------------------------------------
 # The sync between hooks/pre-commit and the credential scan is stated in a comment
 # in both files. A comment does not fail when someone adds a class to one of them,
 # and the gate that still fires would hide the one that no longer does.
-gate_re="$(sed -n "s/^  '\(.*\)'\$/\1/p" "$ROOT_DIR/scripts/check-no-instance-data.sh" | grep -F 'AKIA[0-9A-Z]{16}' | head -1)"
-hook_re="$(sed -n "s/^SECRET_RE='(\(.*\))'\$/\1/p" "$ROOT_DIR/hooks/pre-commit")"
+# The alternation now lives in CREDENTIAL_RE so the binary sweep can reuse it. Read it
+# from that assignment; the old form scraped an indented scan argument that no longer
+# exists, which left gate_re empty and made this check compare nothing to nothing.
+gate_re="$(sed -n "s/^CREDENTIAL_RE='\(.*\)'\$/\1/p" "$ROOT_DIR/scripts/check-no-instance-data.sh" | head -1)"
+if [ ! -f "$ROOT_DIR/hooks/pre-commit" ]; then
+  printf 'skip %-28s no hooks/pre-commit here; this pairing is katala-os-internal\n' 'gates in sync'
+  skip=$((skip+1))
+else
+  hook_re="$(sed -n "s/^SECRET_RE='(\(.*\))'\$/\1/p" "$ROOT_DIR/hooks/pre-commit")"
 norm() { printf '%s\n' "$1" | tr '|' '\n' | sed 's/^(//;s/)$//' | sort -u; }
 if [ -n "$gate_re" ] && [ -n "$hook_re" ] && [ -z "$(comm -3 <(norm "$gate_re") <(norm "$hook_re"))" ]; then
   pass=$((pass+1))
@@ -140,6 +185,7 @@ else
   fail=$((fail+1))
   printf 'FAIL %-28s credential classes differ between the gate and hooks/pre-commit\n' 'gates in sync' >&2
   comm -3 <(norm "$gate_re") <(norm "$hook_re") >&2
+fi
 fi
 
 # --- the report must not republish what it caught -----------------------------
@@ -225,5 +271,5 @@ else
 fi
 rm -rf "$NOREPO"
 
-printf 'gate self-test: %d passed, %d failed\n' "$pass" "$fail"
+printf 'gate self-test: %d passed, %d failed, %d skipped\n' "$pass" "$fail" "$skip"
 [ "$fail" -eq 0 ]

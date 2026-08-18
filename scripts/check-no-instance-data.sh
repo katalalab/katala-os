@@ -36,6 +36,31 @@ repo_allow() {
     | paste -sd '|' -
 }
 
+# An exemption excuses one form a repository legitimately contains; it must not switch
+# a scan off. Nothing stopped the latter: a line reading
+# "credential: ghp_[A-Za-z0-9_]{20,}" removed the whole GitHub-token class, and a real
+# token then passed while the gate printed "honouring 1 exemption" and reported clean.
+# Refuse a pattern that also swallows the scan's own canary.
+CANARY_credential='ghp_'"aaaaBBBBccccDDDDeeee1234"
+CANARY_real_home_path='/Users/'"realuser99/work"
+
+assert_exemption_is_narrow() {
+  local label="$1" extra="$2" canary=""
+  case "$label" in
+    credential) canary="$CANARY_credential" ;;
+    'real home path') canary="$CANARY_real_home_path" ;;
+    *) return 0 ;;
+  esac
+  if printf %s "$canary" | grep -qE "$extra"; then
+    printf '
+check-no-instance-data: [%s] the exemption in %s also excuses the built-in canary.
+' "$label" "$ALLOW_FILE" >&2
+    printf 'An exemption names one form this repository contains. It must not disable the scan.
+' >&2
+    exit 2
+  fi
+}
+
 if [ -f "$ALLOW_FILE" ]; then
   printf 'check-no-instance-data: honouring %s exemption(s) from %s\n' \
     "$(grep -cvE '^[[:space:]]*(#|$)' "$ALLOW_FILE" || true)" "$ALLOW_FILE"
@@ -65,7 +90,10 @@ scan() {
   local hits rc=0 only='-o' extra
   if [ "$allow_scope" = 'line' ]; then only=''; fi
   extra="$(repo_allow "$label")"
-  if [ -n "$extra" ]; then allowed="${allowed:+$allowed|}$extra"; fi
+  if [ -n "$extra" ]; then
+    assert_exemption_is_narrow "$label" "$extra"
+    allowed="${allowed:+$allowed|}$extra"
+  fi
   # git grep exits 1 for "no match" and 2+ for "could not run" — an unreadable
   # object, a bad pathspec, no repository at all. Discarding stderr and treating
   # every non-zero the same made those report as nothing to see, which is this
@@ -135,8 +163,10 @@ scan 'private address (tailscale ipv6)' \
 # The classes here are the ones this fleet can actually issue. Stripe, Twilio and
 # SendGrid shapes are deliberately absent — carrying patterns for credentials nobody
 # here holds buys nothing and makes the set look more complete than it is.
-scan 'credential' \
-  '(gho_|ghp_|ghr_|ghs_|github_pat_)[A-Za-z0-9_]{20,}|sk-(ant|proj|live)-[A-Za-z0-9_-]{20,}|AIza[A-Za-z0-9_-]{30,}|xox[abpsr]-[A-Za-z0-9-]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|npm_[A-Za-z0-9]{36}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|[MN][A-Za-z0-9_-]{23,}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27,}|discord(app)?\.com/api/webhooks/[0-9]+/[A-Za-z0-9_-]{20,}|hooks\.slack\.com/services/[A-Za-z0-9]+/[A-Za-z0-9]+/[A-Za-z0-9]{20,}|(mongodb(\+srv)?|postgres(ql)?|mysql|redis|amqp|mssql)://[^:/@[:space:]]+:[^@[:space:]]+@|aws_secret_access_key[[:space:]]*[:=][[:space:]]*.?[A-Za-z0-9/+=]{40}|"type"[[:space:]]*:[[:space:]]*"service_account"'
+# Hoisted so the binary sweep below reuses the exact same set. Two copies of this
+# alternation would drift, and the copy that stopped matching would be the silent one.
+CREDENTIAL_RE='(gho_|ghp_|ghr_|ghs_|github_pat_)[A-Za-z0-9_]{20,}|sk-(ant|proj|live)-[A-Za-z0-9_-]{20,}|AIza[A-Za-z0-9_-]{30,}|xox[abpsr]-[A-Za-z0-9-]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|npm_[A-Za-z0-9]{36}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|[MN][A-Za-z0-9_-]{23,}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27,}|discord(app)?\.com/api/webhooks/[0-9]+/[A-Za-z0-9_-]{20,}|hooks\.slack\.com/services/[A-Za-z0-9]+/[A-Za-z0-9]+/[A-Za-z0-9]{20,}|(mongodb(\+srv)?|postgres(ql)?|mysql|redis|amqp|mssql)://[^:/@[:space:]]+:[^@[:space:]]+@|aws_secret_access_key[[:space:]]*[:=][[:space:]]*.?[A-Za-z0-9/+=]{40}|"type"[[:space:]]*:[[:space:]]*"service_account"'
+scan 'credential' "$CREDENTIAL_RE"
 
 # Employee/account identifier shape (letter + 5 digits) assigned to a user field.
 # Case-insensitive: the field name is prose ("Owner:", "USER=") and capitalization
@@ -174,6 +204,43 @@ inventory="$(printf '%s\n' "$tracked" | grep -E '(^|/)(fleet-hosts\.tsv|fleet-en
 if [ -n "$inventory" ]; then
   fail=1
   printf '\n[host inventory]\n%s\n' "$inventory" >&2
+fi
+
+# git grep -I skips binaries, so every scan above is blind to them. A screenshot of a
+# terminal showing a token is a PNG; an exported archive is a zip. Both are ordinary
+# things to commit and both were invisible. Pull the printable runs out of each tracked
+# binary and put them through the credential scan — the class where a miss is
+# unrecoverable — rather than leaving the whole file unread.
+# Binaries are the tracked files git grep -I refused to read. Asking for
+# --files-without-match with an empty pattern returns nothing, so derive the set by
+# subtracting the text files from everything tracked.
+text_files="$(git grep -Il '' -- . 2>/dev/null || true)"
+binaries="$(printf '%s
+' "$tracked" | grep -vxF -f <(printf '%s
+' "$text_files") || true)"
+if [ -n "$binaries" ]; then
+  binary_hits=''
+  while IFS= read -r bin; do
+    [ -n "$bin" ] || continue
+    [ -f "$bin" ] || continue
+    if strings_out="$(tr -c '[:print:]' '
+' < "$bin" 2>/dev/null)"; then
+      if printf '%s
+' "$strings_out" | grep -qE "$CREDENTIAL_RE"; then
+        binary_hits="$binary_hits$bin"$'
+'
+      fi
+    fi
+  done <<EOF
+$binaries
+EOF
+  if [ -n "$binary_hits" ]; then
+    fail=1
+    printf '
+[credential in binary]
+%s
+' "$binary_hits" >&2
+  fi
 fi
 
 if [ "$fail" -ne 0 ]; then
