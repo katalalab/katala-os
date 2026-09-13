@@ -1,8 +1,10 @@
 # Katala OS — an agent operating discipline
 
-A constitution-driven operating discipline for running coding agents (Claude Code, Codex CLI, Cursor, OpenCode, Antigravity) across several machines without the rules quietly rotting.
+katala-osは、複数の環境や異なるコーディングエージェントを運用する際に、指示ファイルの整合性を維持するための運用規律とスクリプト集です。エージェントへの指示ファイルが作業中に意図せず改変されることを防ぐため、ハッシュ値による基準ファイルの変更検知や、共通ルールを配布する仕組みを提供します。
 
-This is the sanitized open-source cut of a setup that runs a real multi-machine, multi-engine development fleet. Fleet-specific data — hostnames, addresses, host inventories, operational logs — is deliberately absent: what is published here is the **shape**, not one instance of it.
+複数のマシンやエージェント間で共通の指示ファイルを管理したい場面や、意図しないルールの書き換えが発生していないかハッシュ値の照合によって検知したい場面に適しています。
+
+提供される機能はスクリプトやフックによる変更検知やテンプレートの配布であり、意図しない変更を強制的に阻止することや、すべての環境で常に同期されていることを保証するものではありません。
 
 ## The problem it solves
 
