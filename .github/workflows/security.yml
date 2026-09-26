@@ -3,7 +3,6 @@
 name: security
 on:
   pull_request:
-  workflow_dispatch:
 permissions:
   contents: read
 jobs:
@@ -15,6 +14,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      - name: 検査の設定と除外は base 側のものを使う(PR で自分の指摘を消せないように)
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          [ -n "$BASE_SHA" ] || exit 0
+          for f in .gitleaks.toml .gitleaksignore .semgrepignore; do
+            if git cat-file -e "$BASE_SHA:$f" 2>/dev/null; then git show "$BASE_SHA:$f" > "$f"; else rm -f "$f"; fi
+          done
       - name: Semgrep CE (base との差分で新しく入った指摘だけ)
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
