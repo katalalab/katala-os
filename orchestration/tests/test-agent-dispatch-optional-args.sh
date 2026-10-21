@@ -7,7 +7,7 @@ DISPATCH_TEST_BASH="${DISPATCH_TEST_BASH:-$BASH}"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 work_dir="$tmp/work with spaces"
-mkdir -p "$tmp/fake-bin" "$work_dir" "$tmp/pwsh-dir"
+mkdir -p "$tmp/fake-bin" "$work_dir" "$tmp/pwsh-dir" "$tmp/coreutils-bin"
 
 cat > "$tmp/fake-bin/codex" <<'EOF'
 #!/bin/sh
@@ -60,7 +60,20 @@ else
 fi
 EOF
 printf '#!/bin/sh\nexit 0\n' > "$tmp/pwsh-dir/pwsh.exe"
-chmod +x "$tmp/fake-bin/"* "$tmp/pwsh-dir/pwsh.exe"
+# Ubuntu can put pwsh and timeout in the same directory. Keep an isolated
+# version of that layout so a lost timeout cannot fall back to a host binary.
+cp "$tmp/pwsh-dir/pwsh.exe" "$tmp/coreutils-bin/pwsh"
+cat > "$tmp/coreutils-bin/timeout" <<'EOF'
+#!/bin/sh
+shift
+exec "$@"
+EOF
+for utility in mktemp tr cat tail rm; do
+  ln -s "$(type -P "$utility")" "$tmp/coreutils-bin/$utility"
+done
+# This argv test needs child exit propagation, not a host timeout implementation.
+cp "$tmp/coreutils-bin/timeout" "$tmp/fake-bin/timeout"
+chmod +x "$tmp/fake-bin/"* "$tmp/pwsh-dir/pwsh.exe" "$tmp/coreutils-bin/pwsh" "$tmp/coreutils-bin/timeout"
 common_path="$tmp/fake-bin:$tmp/pwsh-dir:$PATH"
 
 pass=0 fail=0
@@ -71,6 +84,7 @@ check_dispatch() {
   local actual="$tmp/$label.args" expected="$tmp/$label.expected"
   local errors="$tmp/$label.err" seen_path="$tmp/$label.path"
   local prompt='check argv boundaries' output rc=0 ok=1 answer='model answer'
+  local execution_path="${DISPATCH_TEST_CHILD_PATH:-$common_path}"
 
   if [ "$backend" = gpt ]; then
     answer='codex answer'
@@ -92,7 +106,7 @@ check_dispatch() {
     } > "$expected"
   fi
 
-  output="$(PATH="$common_path" USAGE_GATE=0 DISPATCH_ARGS_FILE="$actual" \
+  output="$(PATH="$execution_path" USAGE_GATE=0 DISPATCH_ARGS_FILE="$actual" \
     DISPATCH_PATH_FILE="$seen_path" DISPATCH_TEST_WINDOWS="$windows" DISPATCH_STUB_EXIT="$want_rc" \
     "$DISPATCH_TEST_BASH" "$runner" "$backend" --dir "$work_dir" "$@" -- "$prompt" 2>"$errors")" || rc=$?
   [ "$rc" -eq "$want_rc" ] || ok=0
@@ -105,9 +119,9 @@ check_dispatch() {
   cmp -s "$expected" "$actual" || ok=0
   if [ "$backend" = gpt ] && [ -f "$seen_path" ]; then
     if [ "$windows" = 1 ]; then
-      case ":$(cat "$seen_path"):" in *":$tmp/pwsh-dir:"*) ok=0 ;; esac
+      case ":$(cat "$seen_path"):" in *":$tmp/pwsh-dir:"*|*":$tmp/coreutils-bin:"*) ok=0 ;; esac
     else
-      [ "$(cat "$seen_path")" = "$common_path" ] || ok=0
+      [ "$(cat "$seen_path")" = "$execution_path" ] || ok=0
     fi
   fi
   if [ "$ok" = 1 ]; then
@@ -129,6 +143,8 @@ for backend in gpt cursor; do
 done
 check_dispatch gpt readonly default 1 0 --read-only
 check_dispatch gpt readonly explicit 1 0 --read-only --model fixture-model
+DISPATCH_TEST_CHILD_PATH="$tmp/fake-bin:$tmp/coreutils-bin" check_dispatch gpt readonly default 1 0 --read-only
+DISPATCH_TEST_CHILD_PATH="$tmp/fake-bin:$tmp/coreutils-bin" check_dispatch gpt readonly explicit 1 0 --read-only --model fixture-model
 printf 'dispatch exact-argv matrix: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
 
