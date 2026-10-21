@@ -79,6 +79,26 @@ run() {
 [ "$DRY_RUN" -eq 1 ] || mkdir -p "$TARGET"
 
 # Substitute {{REPO_NAME}}, {{REPO_DESCRIPTION}}, {{AGENT_CONTEXT_PATH}}, {{DATE}}, {{OPERATOR}}.
+literal_substitution() {
+  local placeholder="$1" value="$2"
+  value="${value//\\/\\\\}"
+  value="${value//&/\\&}"
+  value="${value//|/\\|}"
+  value="${value//$'\n'/\\$'\n'}"
+  # Return the complete expression so command substitution retains trailing newlines.
+  printf 's|{{%s}}|%s|g' "$placeholder" "$value"
+}
+
+render_template() {
+  sed \
+    -e "$(literal_substitution REPO_NAME "$REPO_NAME")" \
+    -e "$(literal_substitution REPO_DESCRIPTION "$REPO_DESCRIPTION")" \
+    -e "$(literal_substitution AGENT_CONTEXT_PATH "$REPO_ROOT")" \
+    -e "$(literal_substitution DATE "$DATE")" \
+    -e "$(literal_substitution OPERATOR "$OPERATOR")" \
+    "$1"
+}
+
 render() {
   local src="$1" dst="$2"
   if [ ! -f "$src" ]; then
@@ -87,16 +107,9 @@ render() {
   fi
 
   if [ -e "$dst" ]; then
-    local same=0
     local tmp
     tmp="$(mktemp)"
-    sed \
-      -e "s|{{REPO_NAME}}|$REPO_NAME|g" \
-      -e "s|{{REPO_DESCRIPTION}}|$REPO_DESCRIPTION|g" \
-      -e "s|{{AGENT_CONTEXT_PATH}}|$REPO_ROOT|g" \
-      -e "s|{{DATE}}|$DATE|g" \
-      -e "s|{{OPERATOR}}|$OPERATOR|g" \
-      "$src" > "$tmp"
+    render_template "$src" > "$tmp"
     if cmp -s "$tmp" "$dst"; then
       printf '  ok    %s (identical)\n' "$dst"
       rm -f "$tmp"
@@ -113,13 +126,7 @@ render() {
   else
     printf '  create %s\n' "$dst"
     if [ "$DRY_RUN" -eq 0 ]; then
-      sed \
-        -e "s|{{REPO_NAME}}|$REPO_NAME|g" \
-        -e "s|{{REPO_DESCRIPTION}}|$REPO_DESCRIPTION|g" \
-        -e "s|{{AGENT_CONTEXT_PATH}}|$REPO_ROOT|g" \
-        -e "s|{{DATE}}|$DATE|g" \
-        -e "s|{{OPERATOR}}|$OPERATOR|g" \
-        "$src" > "$dst"
+      render_template "$src" > "$dst"
     fi
   fi
 }
@@ -160,7 +167,7 @@ if [ "$SET_HOOKS_PATH" -eq 1 ]; then
     run git -C "$TARGET" config core.hooksPath "$REPO_ROOT/hooks"
     printf '  hooks  core.hooksPath -> %s/hooks\n' "$REPO_ROOT"
   else
-    printf '  hooks  skipped (no .git in %s — run `git init` first, then re-run init-repo)\n' "$TARGET"
+    printf "  hooks  skipped (no .git in %s — run \`git init\` first, then re-run init-repo)\n" "$TARGET"
   fi
 fi
 
