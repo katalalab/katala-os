@@ -36,6 +36,25 @@ else
   exit 2
 fi
 
+# A failing process substitution does not fail its parent loop. Validate and
+# extract every row in a checked command before attempting any artifact hashes.
+if ! ARTIFACTS=$(jq -ers '
+  def field: type == "string" and length > 0 and (test("[[:cntrl:]]") | not);
+  select(length == 1)
+  | .[0] | select(type == "object")
+  | .artifacts | select(type == "object" and length > 0)
+  | to_entries
+  | select(all(.[];
+      (.key | field)
+      and (.value | type == "object"
+        and (.path | field)
+        and (.sha256 | field and test("^[0-9A-Fa-f]{64}$")))))
+  | .[] | "\(.key)\t\(.value.path)\t\(.value.sha256)"
+' "$LOCK_PATH" 2>/dev/null); then
+  printf 'invalid manifest artifacts: %s\n' "$LOCK_PATH" >&2
+  exit 2
+fi
+
 ROOT_DIR=$(dirname "$LOCK_PATH")
 DECLARED=$(jq -r '.paths_relative_to // ""' "$LOCK_PATH")
 if [ -n "$DECLARED" ]; then
@@ -73,7 +92,7 @@ while IFS=$'\t' read -r name rel expected; do
     printf '          actual:   %s\n' "$actual"
     FAILURES=$((FAILURES + 1))
   fi
-done < <(jq -r '.artifacts | to_entries[] | "\(.key)\t\(.value.path)\t\(.value.sha256)"' "$LOCK_PATH")
+done <<< "$ARTIFACTS"
 
 printf '\nchecked: %d artifacts; failures: %d\n' "$CHECKS" "$FAILURES"
 if [ "$FAILURES" -gt 0 ]; then

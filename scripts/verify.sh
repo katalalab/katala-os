@@ -7,3 +7,4 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 "$ROOT_DIR/scripts/verify-manifest.sh" "$ROOT_DIR/manifest.lock.json"
 "$ROOT_DIR/scripts/validate-skills.sh" "$ROOT_DIR"
+"$ROOT_DIR/scripts/test-verify-manifest.sh"
