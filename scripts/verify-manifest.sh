@@ -59,10 +59,13 @@ ROOT_DIR=$(dirname "$LOCK_PATH")
 DECLARED=$(jq -r '.paths_relative_to // ""' "$LOCK_PATH")
 if [ -n "$DECLARED" ]; then
   case "$DECLARED" in
-    "~"*) DECLARED="$HOME${DECLARED#~}" ;;
+    "~"*) DECLARED="$HOME${DECLARED#\~}" ;;
   esac
-  DECLARED="${DECLARED%/}"
-  [ -d "$DECLARED" ] && ROOT_DIR="$DECLARED"
+  # Resolve declarations against the lock, never the caller or a fallback tree.
+  case "$DECLARED" in
+    /*) ROOT_DIR="$DECLARED" ;;
+    *)  ROOT_DIR="$ROOT_DIR/$DECLARED" ;;
+  esac
 fi
 
 FAILURES=0
