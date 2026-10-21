@@ -139,8 +139,9 @@ EOF
       ro_opts=(-c mcp_servers.node_repl.enabled=false)
     fi
 
+    # Bash 3.2 treats empty arrays as unset under set -u.
     if PATH="$ro_path" run codex exec --skip-git-repo-check --color never -C "$DIR" \
-         "${sandbox[@]}" "${ro_opts[@]}" "${model[@]}" -o "$msg" "$PROMPT" </dev/null >/dev/null 2>"$err"; then
+         ${sandbox[@]+"${sandbox[@]}"} ${ro_opts[@]+"${ro_opts[@]}"} ${model[@]+"${model[@]}"} -o "$msg" "$PROMPT" </dev/null >/dev/null 2>"$err"; then
       if [ -s "$msg" ]; then cat "$msg"; else tail -20 "$err" >&2; rm -f "$msg" "$err"; exit 1; fi
     else
       rc=$?; echo "agent-dispatch(gpt): codex exec が失敗 (rc=$rc)" >&2; tail -20 "$err" >&2
@@ -154,7 +155,7 @@ EOF
     if [ "$READ_ONLY" = 1 ]; then
       permission=(
         --permission-mode dontAsk
-        --tools Read,Glob,Grep,Bash
+        --tools 'Read,Glob,Grep,Bash'
         --no-session-persistence
       )
     fi
@@ -174,7 +175,7 @@ EOF
     fi
     mode=(--force); [ "$READ_ONLY" = 1 ] && mode=(--mode ask)
     model=(); [ -n "$MODEL" ] && model=(--model "$MODEL")
-    run cursor-agent -p --output-format text --trust "${mode[@]}" "${model[@]}" \
+    run cursor-agent -p --output-format text --trust "${mode[@]}" ${model[@]+"${model[@]}"} \
         --workspace "$DIR" "$PROMPT"
     ;;
 
