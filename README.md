@@ -54,6 +54,15 @@ pwsh -File .\scripts\bootstrap.ps1
 pwsh -File .\scripts\Test-FleetMirrorFreshness.ps1
 ```
 
+The Windows verifier resolves a declared relative artifact root against the lock file,
+not the caller's current directory. A missing declared root is reported as missing;
+it never falls back to the lock directory. Empty or invalid artifact lists, malformed
+hashes, and Windows drive-relative or current-drive-rooted paths are rejected. Use a
+fully qualified Windows path when declaring an absolute root or artifact. To test this
+without installed context, run `pwsh -File scripts/test-windows-manifest.ps1 -TestRoot <disposable-directory>`;
+the test creates and leaves a uniquely named fixture directory under that existing root.
+These checks do not prevent symlink or junction changes or file replacement during hashing.
+
 `AGENTS.MD` is deliberately **not** hash-locked — it is meant to evolve as your setup does. Only
 `CONSTITUTION.md` and `AGENTS-COMMUNICATION.md` are recorded in `manifest.lock.json`; editing
 either one fails `verify.sh` until you update the recorded hash in the same commit, which is the

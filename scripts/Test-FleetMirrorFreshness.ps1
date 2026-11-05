@@ -12,10 +12,12 @@ param(
     [string]$LockPath = (Join-Path $env:USERPROFILE 'work\agent-context\manifest.lock.json')
 )
 
-if (-not (Test-Path $LockPath)) {
-    Write-Error "lock file missing: $LockPath"
+$ErrorActionPreference = 'Stop'
+if (-not (Test-Path -LiteralPath $LockPath -PathType Leaf)) {
+    [Console]::Error.WriteLine("lock file missing: $LockPath")
     exit 2
 }
+$LockPath = (Resolve-Path -LiteralPath $LockPath -ErrorAction Stop).ProviderPath
 
 # Windows PowerShell 5.1 can silently fail to autoload Get-FileHash when a
 # PS7 WindowsApps package earlier on $env:PSModulePath ships a same-named,
@@ -24,36 +26,70 @@ if (-not (Get-Command Get-FileHash -ErrorAction SilentlyContinue)) {
     Import-Module "$env:WINDIR\System32\WindowsPowerShell\v1.0\Modules\Microsoft.PowerShell.Utility\Microsoft.PowerShell.Utility.psd1" -Force -ErrorAction Stop
 }
 
-$lock = Get-Content $LockPath -Raw | ConvertFrom-Json
+function Test-AmbiguousPath([string]$Value) {
+    # C:foo and \foo depend on the process's current drive/directory.
+    return $Value -match '^[A-Za-z]:(?![\\/])|^[\\/](?![\\/])'
+}
+
+try {
+    $lock = Get-Content -LiteralPath $LockPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+    if ($lock -isnot [pscustomobject] -or $lock.artifacts -isnot [pscustomobject]) { throw 'invalid artifacts' }
+    $entries = @($lock.artifacts.PSObject.Properties)
+    if ($entries.Count -eq 0) { throw 'empty artifacts' }
+    foreach ($entry in $entries) {
+        $artifact = $entry.Value
+        if ([string]::IsNullOrEmpty($entry.Name) -or $entry.Name -match '[\x00-\x1f\x7f]' -or
+            $artifact -isnot [pscustomobject] -or $artifact.path -isnot [string] -or
+            [string]::IsNullOrEmpty($artifact.path) -or $artifact.path -match '[\x00-\x1f\x7f]' -or (Test-AmbiguousPath $artifact.path) -or
+            $artifact.sha256 -isnot [string] -or $artifact.sha256 -notmatch '^[0-9a-fA-F]{64}$') {
+            throw 'invalid artifact entry'
+        }
+    }
+    if ($null -ne $lock.paths_relative_to -and $lock.paths_relative_to -isnot [string]) { throw 'invalid declared root' }
+    if ($lock.paths_relative_to -is [string] -and ($lock.paths_relative_to -match '[\x00-\x1f\x7f]' -or (Test-AmbiguousPath $lock.paths_relative_to))) { throw 'invalid declared root' }
+} catch {
+    Write-Output "invalid manifest: $LockPath"
+    exit 2
+}
 
 # Resolve `paths_relative_to` from lock file; default to lock-file directory.
 $root = Split-Path -Parent $LockPath
-if ($lock.PSObject.Properties.Name -contains 'paths_relative_to') {
+try {
     $declared = $lock.paths_relative_to
-    if ($declared -match '^~') {
-        $declared = $declared -replace '^~', $env:USERPROFILE
+    if ($declared) {
+        if ($declared.StartsWith('~')) { $declared = $env:USERPROFILE + $declared.Substring(1) }
+        if ([System.IO.Path]::IsPathRooted($declared)) { $root = [System.IO.Path]::GetFullPath($declared) }
+        else { $root = [System.IO.Path]::GetFullPath((Join-Path $root $declared)) }
     }
-    $declared = $declared.TrimEnd('/', '\')
-    if (Test-Path $declared) { $root = (Resolve-Path $declared).Path }
+} catch {
+    Write-Output "invalid manifest root: $LockPath"
+    exit 2
 }
 
 $failures = @()
 $checks = 0
 
-foreach ($artifactName in $lock.artifacts.PSObject.Properties.Name) {
-    $artifact = $lock.artifacts.$artifactName
+foreach ($entry in $entries) {
+    $artifactName = $entry.Name
+    $artifact = $entry.Value
     $checks++
 
     $rel = $artifact.path
     $abs = if ([System.IO.Path]::IsPathRooted($rel)) { $rel } else { Join-Path $root $rel }
 
-    if (-not (Test-Path $abs)) {
+    if (-not (Test-Path -LiteralPath $abs -PathType Leaf)) {
         Write-Output "[MISSING] $artifactName -> $abs"
         $failures += "$artifactName : file missing"
         continue
     }
 
-    $actual = (Get-FileHash $abs -Algorithm SHA256).Hash
+    try {
+        $actual = (Get-FileHash -LiteralPath $abs -Algorithm SHA256 -ErrorAction Stop).Hash
+    } catch {
+        Write-Output "[ERROR]   $artifactName -> $abs"
+        $failures += "$artifactName : hash unavailable"
+        continue
+    }
     $expected = $artifact.sha256
     if ($actual -eq $expected) {
         Write-Verbose "[OK]      $artifactName -> $actual"
