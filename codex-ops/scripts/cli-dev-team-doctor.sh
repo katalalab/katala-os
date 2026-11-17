@@ -63,7 +63,7 @@ probe_category() {
     generated_at|host|mode|team.*)
       printf 'metadata'
       ;;
-    *.version|support.*.version)
+    *.version)
       printf 'local_exec'
       ;;
     *.auth|antigravity.models)
@@ -99,7 +99,7 @@ probe_impact() {
     generated_at|host|mode|team.*)
       printf 'no_probe'
       ;;
-    *.version|support.*.version)
+    *.version)
       printf 'executes_local_cli_version_only'
       ;;
     codex.auth|opencode.auth)
