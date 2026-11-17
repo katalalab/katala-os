@@ -258,6 +258,15 @@ record() {
   printf '%s\t%s\t%s\n' "$name" "$status" "$detail"
 }
 
+# Python sub-commands all take --output-dir as their last flag, and only when one was given.
+run_python_tool() {
+  if [[ -n "$OUTPUT_DIR" ]]; then
+    python3 "$@" --output-dir "$OUTPUT_DIR"
+  else
+    python3 "$@"
+  fi
+}
+
 record_self_test() {
   local name="$1"
   local status="$2"
@@ -1121,34 +1130,22 @@ case "$COMMAND" in
     ;;
   watchdog)
     watchdog_args=(--socket "$SOCKET" --session "$SESSION" --samples "$WATCHDOG_SAMPLES" --interval "$WATCHDOG_INTERVAL" --format json)
-    if [[ -n "$OUTPUT_DIR" ]]; then
-      watchdog_args+=(--output-dir "$OUTPUT_DIR")
-    fi
-    python3 "$WATCHDOG" "${watchdog_args[@]}"
+    run_python_tool "$WATCHDOG" "${watchdog_args[@]}"
     ;;
   supervisor)
     supervisor_args=(--target "$TARGET_DIR" --roles "$ROLES" --watchdog-samples "$WATCHDOG_SAMPLES" --watchdog-interval "$WATCHDOG_INTERVAL" --format json)
-    if [[ -n "$OUTPUT_DIR" ]]; then
-      supervisor_args+=(--output-dir "$OUTPUT_DIR")
-    fi
-    python3 "$SUPERVISOR" "${supervisor_args[@]}"
+    run_python_tool "$SUPERVISOR" "${supervisor_args[@]}"
     ;;
   loop-batch)
     batch_args=(--target "$TARGET_DIR" --roles "$ROLES" --cycles "$LOOP_CYCLES" --dispatch-timeout "$TIMEOUT_SECONDS" --watchdog-samples "$WATCHDOG_SAMPLES" --watchdog-interval "$WATCHDOG_INTERVAL" --format json)
-    if [[ -n "$OUTPUT_DIR" ]]; then
-      batch_args+=(--output-dir "$OUTPUT_DIR")
-    fi
-    python3 "$LOOP_BATCH" "${batch_args[@]}"
+    run_python_tool "$LOOP_BATCH" "${batch_args[@]}"
     ;;
   leased-loop-batch)
     leased_batch_args=(--target "$TARGET_DIR" --roles "$ROLES" --cycles "$LOOP_CYCLES" --dispatch-timeout "$TIMEOUT_SECONDS" --lease-ttl-seconds "$LEASE_TTL_SECONDS" --watchdog-samples "$WATCHDOG_SAMPLES" --watchdog-interval "$WATCHDOG_INTERVAL" --format json)
     if [[ -n "$LEASE_ID" ]]; then
       leased_batch_args+=(--lease-id "$LEASE_ID")
     fi
-    if [[ -n "$OUTPUT_DIR" ]]; then
-      leased_batch_args+=(--output-dir "$OUTPUT_DIR")
-    fi
-    python3 "$LEASED_LOOP_BATCH" "${leased_batch_args[@]}"
+    run_python_tool "$LEASED_LOOP_BATCH" "${leased_batch_args[@]}"
     ;;
   managed-serial-loop)
     managed_serial_args=(--target "$TARGET_DIR" --roles "$ROLES" --cycles "$LOOP_CYCLES" --max-batches "$MAX_BATCHES" --dispatch-timeout "$TIMEOUT_SECONDS" --lease-ttl-seconds "$LEASE_TTL_SECONDS" --watchdog-samples "$WATCHDOG_SAMPLES" --watchdog-interval "$WATCHDOG_INTERVAL" --format json)
@@ -1158,65 +1155,41 @@ case "$COMMAND" in
     if [[ -n "$STOP_FILE" ]]; then
       managed_serial_args+=(--stop-file "$STOP_FILE")
     fi
-    if [[ -n "$OUTPUT_DIR" ]]; then
-      managed_serial_args+=(--output-dir "$OUTPUT_DIR")
-    fi
-    python3 "$MANAGED_SERIAL_LOOP" "${managed_serial_args[@]}"
+    run_python_tool "$MANAGED_SERIAL_LOOP" "${managed_serial_args[@]}"
     ;;
   cycle)
     cycle_args=(--target "$TARGET_DIR" --roles "$ROLES" --dispatch-timeout "$TIMEOUT_SECONDS" --format json)
-    if [[ -n "$OUTPUT_DIR" ]]; then
-      cycle_args+=(--output-dir "$OUTPUT_DIR")
-    fi
-    python3 "$CYCLE" "${cycle_args[@]}"
+    run_python_tool "$CYCLE" "${cycle_args[@]}"
     ;;
   readiness)
     readiness_args=(--target-fanout "$(printf '%s' "$ROLES" | awk -F',' '{print NF}')")
-    if [[ -n "$OUTPUT_DIR" ]]; then
-      readiness_args+=(--output-dir "$OUTPUT_DIR")
-    fi
-    python3 "$READINESS" "${readiness_args[@]}"
+    run_python_tool "$READINESS" "${readiness_args[@]}"
     ;;
   controlled-dispatch)
     controlled_args=(--target "$TARGET_DIR" --one-roles codex --three-roles "$ROLES" --dispatch-timeout "$TIMEOUT_SECONDS")
-    if [[ -n "$OUTPUT_DIR" ]]; then
-      controlled_args+=(--output-dir "$OUTPUT_DIR")
-    fi
-    python3 "$CONTROLLED_DISPATCH" "${controlled_args[@]}"
+    run_python_tool "$CONTROLLED_DISPATCH" "${controlled_args[@]}"
     ;;
   cleanup-to-fanout)
     cleanup_fanout_args=(--target "$TARGET_DIR" --one-roles codex --three-roles "$ROLES" --dispatch-timeout "$TIMEOUT_SECONDS")
-    if [[ -n "$OUTPUT_DIR" ]]; then
-      cleanup_fanout_args+=(--output-dir "$OUTPUT_DIR")
-    fi
-    python3 "$CLEANUP_TO_FANOUT" "${cleanup_fanout_args[@]}"
+    run_python_tool "$CLEANUP_TO_FANOUT" "${cleanup_fanout_args[@]}"
     ;;
   cleanup-freshness)
     cleanup_freshness_args=(--target "$TARGET_DIR" --format json)
-    if [[ -n "$OUTPUT_DIR" ]]; then
-      cleanup_freshness_args+=(--output-dir "$OUTPUT_DIR")
-    fi
-    python3 "$CLEANUP_FRESHNESS" "${cleanup_freshness_args[@]}"
+    run_python_tool "$CLEANUP_FRESHNESS" "${cleanup_freshness_args[@]}"
     ;;
   cleanup-decision)
     cleanup_decision_args=(--target "$TARGET_DIR" --format json)
     if [[ -n "$PACKET" ]]; then
       cleanup_decision_args+=(--packet "$PACKET")
     fi
-    if [[ -n "$OUTPUT_DIR" ]]; then
-      cleanup_decision_args+=(--output-dir "$OUTPUT_DIR")
-    fi
-    python3 "$CLEANUP_DECISION" "${cleanup_decision_args[@]}"
+    run_python_tool "$CLEANUP_DECISION" "${cleanup_decision_args[@]}"
     ;;
   cleanup-rehearsal)
     cleanup_rehearsal_args=(--target "$TARGET_DIR" --format json)
     if [[ -n "$PACKET" ]]; then
       cleanup_rehearsal_args+=(--packet "$PACKET")
     fi
-    if [[ -n "$OUTPUT_DIR" ]]; then
-      cleanup_rehearsal_args+=(--output-dir "$OUTPUT_DIR")
-    fi
-    python3 "$CLEANUP_REHEARSAL" "${cleanup_rehearsal_args[@]}"
+    run_python_tool "$CLEANUP_REHEARSAL" "${cleanup_rehearsal_args[@]}"
     ;;
   approved-cleanup-runway)
     approved_cleanup_args=(--target "$TARGET_DIR" --target-slots "$TARGET_SLOTS" --max-concurrency "$MAX_CONCURRENCY" --cycles "$LOOP_CYCLES" --lease-ttl-seconds "$LEASE_TTL_SECONDS" --format json)
@@ -1229,10 +1202,7 @@ case "$COMMAND" in
     if [[ "$EXECUTE_APPROVED_CLEANUP" -eq 1 ]]; then
       approved_cleanup_args+=(--execute-approved-cleanup)
     fi
-    if [[ -n "$OUTPUT_DIR" ]]; then
-      approved_cleanup_args+=(--output-dir "$OUTPUT_DIR")
-    fi
-    python3 "$APPROVED_CLEANUP_RUNWAY" "${approved_cleanup_args[@]}"
+    run_python_tool "$APPROVED_CLEANUP_RUNWAY" "${approved_cleanup_args[@]}"
     ;;
   approved-worktree-runway)
     worktree_runway_args=(--target "$TARGET_DIR" --format json)
@@ -1248,20 +1218,14 @@ case "$COMMAND" in
     if [[ "$EXECUTE_WORKTREE_CREATE" -eq 1 ]]; then
       worktree_runway_args+=(--execute-worktree-create)
     fi
-    if [[ -n "$OUTPUT_DIR" ]]; then
-      worktree_runway_args+=(--output-dir "$OUTPUT_DIR")
-    fi
-    python3 "$APPROVED_WORKTREE_RUNWAY" "${worktree_runway_args[@]}"
+    run_python_tool "$APPROVED_WORKTREE_RUNWAY" "${worktree_runway_args[@]}"
     ;;
   post-cleanup-parallel)
     post_cleanup_parallel_args=(--target "$TARGET_DIR" --target-slots "$TARGET_SLOTS" --max-concurrency "$MAX_CONCURRENCY" --cycles "$LOOP_CYCLES" --lease-ttl-seconds "$LEASE_TTL_SECONDS" --format json)
     if [[ -n "$PACKET" ]]; then
       post_cleanup_parallel_args+=(--queue "$PACKET")
     fi
-    if [[ -n "$OUTPUT_DIR" ]]; then
-      post_cleanup_parallel_args+=(--output-dir "$OUTPUT_DIR")
-    fi
-    python3 "$POST_CLEANUP_PARALLEL" "${post_cleanup_parallel_args[@]}"
+    run_python_tool "$POST_CLEANUP_PARALLEL" "${post_cleanup_parallel_args[@]}"
     ;;
   parallel-queue)
     parallel_queue_args=(--target "$TARGET_DIR" --max-concurrency "$MAX_CONCURRENCY" --lease-ttl-seconds "$LEASE_TTL_SECONDS")
@@ -1277,20 +1241,14 @@ case "$COMMAND" in
     if [[ "$EXECUTE_READONLY" -eq 1 ]]; then
       parallel_queue_args+=(--execute-readonly)
     fi
-    if [[ -n "$OUTPUT_DIR" ]]; then
-      parallel_queue_args+=(--output-dir "$OUTPUT_DIR")
-    fi
-    python3 "$PARALLEL_QUEUE" "${parallel_queue_args[@]}"
+    run_python_tool "$PARALLEL_QUEUE" "${parallel_queue_args[@]}"
     ;;
   unblock-plan)
     unblock_args=(--format json)
     if [[ -n "$PARTICIPANT_BOARD" ]]; then
       unblock_args+=(--participant-board "$PARTICIPANT_BOARD")
     fi
-    if [[ -n "$OUTPUT_DIR" ]]; then
-      unblock_args+=(--output-dir "$OUTPUT_DIR")
-    fi
-    python3 "$UNBLOCK_PLAN" "${unblock_args[@]}"
+    run_python_tool "$UNBLOCK_PLAN" "${unblock_args[@]}"
     ;;
   participant-promotion)
     promotion_roles="$ROLES"
@@ -1298,27 +1256,18 @@ case "$COMMAND" in
       promotion_roles="claude,cursor,antigravity"
     fi
     participant_promotion_args=(--target "$TARGET_DIR" --roles "$promotion_roles" --dispatch-timeout "$TIMEOUT_SECONDS" --format json)
-    if [[ -n "$OUTPUT_DIR" ]]; then
-      participant_promotion_args+=(--output-dir "$OUTPUT_DIR")
-    fi
-    python3 "$PARTICIPANT_PROMOTION" "${participant_promotion_args[@]}"
+    run_python_tool "$PARTICIPANT_PROMOTION" "${participant_promotion_args[@]}"
     ;;
   parallel-plan)
     parallel_plan_args=(--target "$TARGET_DIR" --roles "$ROLES" --format json)
-    if [[ -n "$OUTPUT_DIR" ]]; then
-      parallel_plan_args+=(--output-dir "$OUTPUT_DIR")
-    fi
-    python3 "$PARALLEL_PLAN" "${parallel_plan_args[@]}"
+    run_python_tool "$PARALLEL_PLAN" "${parallel_plan_args[@]}"
     ;;
   parallel-packets)
     parallel_packets_args=(--target "$TARGET_DIR" --format json)
     if [[ -n "$PACKET" ]]; then
       parallel_packets_args+=(--manifest "$PACKET")
     fi
-    if [[ -n "$OUTPUT_DIR" ]]; then
-      parallel_packets_args+=(--output-dir "$OUTPUT_DIR")
-    fi
-    python3 "$PARALLEL_PACKETS" "${parallel_packets_args[@]}"
+    run_python_tool "$PARALLEL_PACKETS" "${parallel_packets_args[@]}"
     ;;
   parallel-worktrees)
     parallel_worktree_args=(--target "$TARGET_DIR" --format json)
@@ -1328,10 +1277,7 @@ case "$COMMAND" in
     if [[ -n "$WORKTREE_ROOT" ]]; then
       parallel_worktree_args+=(--worktree-root "$WORKTREE_ROOT")
     fi
-    if [[ -n "$OUTPUT_DIR" ]]; then
-      parallel_worktree_args+=(--output-dir "$OUTPUT_DIR")
-    fi
-    python3 "$PARALLEL_WORKTREES" "${parallel_worktree_args[@]}"
+    run_python_tool "$PARALLEL_WORKTREES" "${parallel_worktree_args[@]}"
     ;;
   parallel-slots)
     parallel_slots_args=(--target "$TARGET_DIR" --target-slots "$TARGET_SLOTS" --cycles "$LOOP_CYCLES" --lease-ttl-seconds "$LEASE_TTL_SECONDS" --format json)
@@ -1341,20 +1287,14 @@ case "$COMMAND" in
     if [[ -n "$PARTICIPANT_BOARD" ]]; then
       parallel_slots_args+=(--participant-board "$PARTICIPANT_BOARD")
     fi
-    if [[ -n "$OUTPUT_DIR" ]]; then
-      parallel_slots_args+=(--output-dir "$OUTPUT_DIR")
-    fi
-    python3 "$PARALLEL_SLOTS" "${parallel_slots_args[@]}"
+    run_python_tool "$PARALLEL_SLOTS" "${parallel_slots_args[@]}"
     ;;
   leases)
     lease_args=(--target "$TARGET_DIR" --format json)
     if [[ "$NO_WRITE" -eq 1 ]]; then
       lease_args+=(--no-write)
     fi
-    if [[ -n "$OUTPUT_DIR" ]]; then
-      lease_args+=(--output-dir "$OUTPUT_DIR")
-    fi
-    python3 "$LEASES" "${lease_args[@]}"
+    run_python_tool "$LEASES" "${lease_args[@]}"
     ;;
   loop-control)
     loop_control_args=(--target "$TARGET_DIR" --format json)
@@ -1364,20 +1304,14 @@ case "$COMMAND" in
     if [[ "$NO_WRITE" -eq 1 ]]; then
       loop_control_args+=(--no-write)
     fi
-    if [[ -n "$OUTPUT_DIR" ]]; then
-      loop_control_args+=(--output-dir "$OUTPUT_DIR")
-    fi
-    python3 "$LOOP_CONTROL" "${loop_control_args[@]}"
+    run_python_tool "$LOOP_CONTROL" "${loop_control_args[@]}"
     ;;
   goal-audit)
     goal_audit_args=(--target "$TARGET_DIR" --format json)
     if [[ -n "$PACKET" ]]; then
       goal_audit_args+=(--packet "$PACKET")
     fi
-    if [[ -n "$OUTPUT_DIR" ]]; then
-      goal_audit_args+=(--output-dir "$OUTPUT_DIR")
-    fi
-    python3 "$GOAL_AUDIT" "${goal_audit_args[@]}"
+    run_python_tool "$GOAL_AUDIT" "${goal_audit_args[@]}"
     ;;
   *)
     record "command" "fail" "unknown command: $COMMAND" >&2
