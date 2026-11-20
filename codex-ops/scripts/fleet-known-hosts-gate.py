@@ -15,7 +15,7 @@ import sys
 import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Optional, Sequence
+from typing import Optional, Sequence
 
 
 SCHEMA = "fleet_known_hosts_gate.v1"
